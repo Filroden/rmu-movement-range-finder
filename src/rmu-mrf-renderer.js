@@ -1,7 +1,10 @@
 /**
- * RMU Movement Range Finder - Renderer (Gridless Border Fix)
+ * RMU Movement Range Finder - Renderer (Metric Fix)
  */
 import { getVisualSettings } from "./rmu-mrf-settings.js";
+
+const METRIC_UNITS = ['m', 'm.', 'meter', 'meters', 'metre', 'metres'];
+const FT_PER_METER = 3.33333;
 
 export function drawOverlay(token, data, mode) {
     clearOverlay();
@@ -65,8 +68,18 @@ function _drawGridHighlight(token, squareMap, settings) {
 
         const colorInt = Color.from(square.color).valueOf();
         
+        // --- THICKNESS LOGIC ---
+        const colorStr = String(square.color).toLowerCase();
+        const limitStr = String(square.limitColor).toLowerCase();
+        const isLimitZone = (colorStr === limitStr);
+        
         graphics.beginFill(colorInt, settings.opacity);
-        graphics.lineStyle(1, 0x000000, 0.3);
+        
+        if (isLimitZone) {
+            graphics.lineStyle(3, 0x000000, 0.5); 
+        } else {
+            graphics.lineStyle(1, 0x000000, 0.3);
+        }
 
         if (isHex) {
             const vertices = canvas.grid.getVertices({i: square.i, j: square.j});
@@ -103,6 +116,7 @@ function _drawGridHighlight(token, squareMap, settings) {
             if (shouldEnforceFog && !canvas.fog.isPointExplored({x: centerX, y: centerY})) continue;
             
             const borderColor = Color.from(square.limitColor).valueOf();
+            
             graphics.lineStyle(4, borderColor, 1.0); 
 
             const x = square.x; const y = square.y;
@@ -132,21 +146,32 @@ function _drawConcentricRings(token, paces, settings) {
     const graphics = new PIXI.Graphics();
     graphics.name = "rmuMovementGraphics"; 
     
-    // Sort paces so largest (Dash) is drawn first
     const sortedPaces = [...paces].sort((a, b) => b.distance - a.distance);
     
+    // --- METRIC CHECK ---
+    const units = canvas.scene.grid.units?.toLowerCase();
+    const isMetric = units && METRIC_UNITS.includes(units);
+    // If Metric: Scale feet down (e.g. 50ft -> 15m)
+    // If Imperial: Keep as is (e.g. 50ft -> 50 units)
+    const distanceScale = isMetric ? (1 / FT_PER_METER) : 1;
+
     for (const pace of sortedPaces) {
-        const pixelRadius = (pace.distance / canvas.scene.grid.distance) * canvas.scene.grid.size;
+        // Apply scaling to the pace distance (which is in feet)
+        const adjustedDist = pace.distance * distanceScale;
+
+        // Calculate radius in pixels based on the SCENE'S grid distance
+        const pixelRadius = (adjustedDist / canvas.scene.grid.distance) * canvas.scene.grid.size;
+        
         const colorInt = Color.from(pace.color).valueOf();
         
         graphics.beginFill(colorInt, settings.opacity);
+        
+        const isLimit = (pace.isActionLimit || pace.name === "Sprint");
 
-        // THICK BORDER LOGIC:
-        // If this pace is the 1 AP Limit (Sprint), draw a thick border.
-        if (pace.isActionLimit || pace.name === "Sprint") {
-            graphics.lineStyle(6, colorInt, 1.0); // Thick & Solid
+        if (isLimit) {
+            graphics.lineStyle(4, colorInt, 1.0); 
         } else {
-            graphics.lineStyle(2, colorInt, 0.7); // Standard
+            graphics.lineStyle(2, colorInt, 0.8); 
         }
 
         graphics.drawCircle(token.center.x, token.center.y, pixelRadius);

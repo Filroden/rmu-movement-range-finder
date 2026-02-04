@@ -1,5 +1,5 @@
 /**
- * RMU Movement Range Finder - Settings (DOM Injection Method)
+ * RMU Movement Range Finder - Settings (Final RC)
  */
 
 export const MODULE_ID = "rmu-movement-range-finder";
@@ -19,7 +19,7 @@ export const SETTING_COLOR_DASH   = "colorDash";
 
 export function registerSettings() {
 
-    // --- 1. TOGGLE SETTING ---
+    // 1. Toggle
     game.settings.register(MODULE_ID, SETTING_ENABLED, {
         name: "Enable Movement Overlay",
         hint: "Toggle the visual overlay on/off. Can also be toggled via hotkey (Default: 'M').",
@@ -30,7 +30,6 @@ export function registerSettings() {
         onChange: refreshOverlay
     });
 
-    // --- 2. KEYBINDING ---
     game.keybindings.register(MODULE_ID, "toggleOverlay", {
         name: "Toggle Movement Overlay",
         hint: "Shows or hides the RMU movement range finder.",
@@ -45,7 +44,7 @@ export function registerSettings() {
         precedence: CONST.KEYBINDING_PRECEDENCE.NORMAL
     });
 
-    // --- 3. LOGIC SETTINGS ---
+    // 2. Logic
     game.settings.register(MODULE_ID, SETTING_ROUNDING, {
         name: "Grid Movement Rounding Rule",
         hint: "Determines if a unit can enter a square if they lack the full movement cost.",
@@ -61,6 +60,7 @@ export function registerSettings() {
         onChange: refreshOverlay
     });
 
+    // 3. Visuals
     game.settings.register(MODULE_ID, SETTING_OPACITY, {
         name: "Overlay Opacity",
         hint: "Transparency of the movement grid (0.1 = transparent, 1.0 = solid).",
@@ -82,9 +82,7 @@ export function registerSettings() {
         onChange: refreshOverlay
     });
 
-    // --- 4. COLOR SETTINGS (Standard Registration) ---
-    // We register these as normal text strings so they appear in the list.
-    // The Hook below will turn them into pickers.
+    // 4. Colors
     const defaultColors = {
         [SETTING_COLOR_CREEP]:  { name: "Creep",  color: "#00FFFF" }, 
         [SETTING_COLOR_WALK]:   { name: "Walk",   color: "#00FF00" }, 
@@ -98,7 +96,7 @@ export function registerSettings() {
         game.settings.register(MODULE_ID, key, {
             name: `Color: ${data.name}`,
             scope: "client",
-            config: true, // Show in main list
+            config: true,
             type: String,
             default: data.color,
             onChange: refreshOverlay
@@ -106,10 +104,8 @@ export function registerSettings() {
     }
 }
 
-// --- HOOK: Inject Color Pickers into Settings Menu ---
+// Hook: Inject Color Pickers
 Hooks.on("renderSettingsConfig", (app, html, data) => {
-    // This hook runs whenever the "Configure Settings" window opens.
-    // We find our text inputs and append a color picker next to them.
     const $html = $(html);
     
     const colorSettings = [
@@ -122,29 +118,17 @@ Hooks.on("renderSettingsConfig", (app, html, data) => {
     ];
 
     colorSettings.forEach(key => {
-        // Construct the input name Foundry uses (moduleID.settingKey)
         const name = `${MODULE_ID}.${key}`;
         const input = $html.find(`input[name="${name}"]`);
         
         if (input.length) {
-            // Create a small color picker input
             const picker = $(`<input type="color" style="margin-left: 5px; max-width: 40px; height: 26px; border: none; padding: 0; background: none; cursor: pointer;">`);
             picker.val(input.val());
 
-            // 1. Picker changes -> Update Text Input
-            picker.on("change", (e) => {
-                input.val(e.target.value);
-            });
+            picker.on("change", (e) => input.val(e.target.value));
+            input.on("change", (e) => picker.val(e.target.value));
 
-            // 2. Text Input changes -> Update Picker
-            input.on("change", (e) => {
-                picker.val(e.target.value);
-            });
-
-            // Insert picker after the text box
             input.after(picker);
-            
-            // Optional: Shrink the text box slightly so they fit nicely
             input.css("flex", "0 0 70%");
         }
     });
