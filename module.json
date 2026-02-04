@@ -1,23 +1,35 @@
 {
-  "id": "MODULE-FOUNDRY-ID",
-  "title": "Mona Lisa",
+  "id": "rmu-movement-range-finder",
+  "title": "RMU Movement Range Finder",
   "description": "My greatest work",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "compatibility": {
     "minimum": "13",
-    "verified": "13"
+    "verified": "13.351"
   },
   "authors": [
-    {
-      "name": "Ken Dearman"
-    }
+    { "name": "Ken Dearman" }
   ],
-  "esmodules": [
-    "main.js"
+  "relationships": {
+    "systems": [
+      {
+        "id": "rmu",
+        "type": "system",
+        "compatibility": {
+          "minimum": "1.0.0"
+        }
+      }
+    ]
+  },
+  "esmodules": [ "main.js" ],
+  "styles": [ ],
+  "languages": [
+    { "lang": "en", "name": "English", "path": "languages/en.json" }
   ],
-  "styles": [
-  ],
-  "manifestPlusVersion": 1,
-  "manifest": "https://github.com/Filroden/fvtt/releases/download/MODULE-FOUNDRY-ID-latest/module.json",
-  "download": " https://github.com/Filroden/fvtt/releases/download/MODULE-FOUNDRY-ID-latest/MODULE-FOUNDRY-ID.zip"
+  "url": "https://github.com/Filroden/rmu-movement-range-finder",
+  "manifest": "https://github.com/Filroden/rmu-movement-range-finder/releases/latest/download/module.json",
+  "download": "https://github.com/Filroden/rmu-movement-range-finder/releases/download/v0.1.0/rmu-movement-range-finder.zip",
+  "bugs": "https://github.com/Filroden/rmu-movement-range-finder/issues",
+  "readme": "https://github.com/Filroden/rmu-movement-range-finder/blob/main/README.md",
+  "license": "https://mit-license.org/"
 }
