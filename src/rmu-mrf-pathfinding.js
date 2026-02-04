@@ -1,18 +1,25 @@
 /**
- * RMU Movement Range Finder - Pathfinding (Margin Fix)
+ * RMU Movement Range Finder - Pathfinding (Origin Override)
  */
+
 import { getRoundingMode } from "./rmu-mrf-settings.js";
 
 const METRIC_UNITS = ['m', 'm.', 'meter', 'meters', 'metre', 'metres'];
 const FT_PER_METER = 3.33333;
 
-export function calculateReachableSquares(token, movementPaces) {
+/**
+ * Calculates reachable squares.
+ * @param {Token} token - The token object.
+ * @param {Array} movementPaces - List of movement speeds.
+ * @param {Object|null} originOverride - {x, y} to force calculation from a specific point (Session Origin).
+ */
+export function calculateReachableSquares(token, movementPaces, originOverride = null) {
     if (!token?.actor || !movementPaces || movementPaces.length === 0) return new Map();
 
     const grid = canvas.grid;
     const gridType = grid.type;
     
-    // --- 1. METRIC SCALING ---
+    // Metric Scaling
     const units = canvas.scene.grid.units?.toLowerCase();
     const isMetric = units && METRIC_UNITS.includes(units);
     const distanceScale = isMetric ? (1 / FT_PER_METER) : 1;
@@ -22,28 +29,27 @@ export function calculateReachableSquares(token, movementPaces) {
         distance: p.distance * distanceScale
     }));
 
-    // --- 2. SETUP START (INSET BOX SCAN) ---
-    const minCosts = new Map();
-    const queue = [];
-
-    // 1. Get Token Bounds
-    const tx = token.document.x;
-    const ty = token.document.y;
+    // --- SETUP START (Origin Logic) ---
+    // If originOverride is provided (from Session Cache), use it.
+    // Otherwise, default to the token's current position.
+    const startX = originOverride ? originOverride.x : token.document.x;
+    const startY = originOverride ? originOverride.y : token.document.y;
     const tw = token.w;
     const th = token.h;
 
-    // 2. Define "Safe Zone" (Inset by only 2%)
-    // Reduced from 0.15 to 0.02 to ensure we capture edge hexes on large tokens
-    const margin = grid.size * 0.02; 
-    
-    const safeLeft = tx + margin;
-    const safeRight = (tx + tw) - margin;
-    const safeTop = ty + margin;
-    const safeBottom = (ty + th) - margin;
+    const minCosts = new Map();
+    const queue = [];
 
-    // 3. Determine Scan Loop
-    const c1 = grid.getOffset({ x: tx, y: ty });
-    const c2 = grid.getOffset({ x: tx + tw, y: ty + th });
+    // Define "Safe Zone" relative to the START point
+    const margin = grid.size * 0.02; 
+    const safeLeft = startX + margin;
+    const safeRight = (startX + tw) - margin;
+    const safeTop = startY + margin;
+    const safeBottom = (startY + th) - margin;
+
+    // Scan Loop Bounds relative to START point
+    const c1 = grid.getOffset({ x: startX, y: startY });
+    const c2 = grid.getOffset({ x: startX + tw, y: startY + th });
     
     const padding = 1; 
     const minI = Math.min(c1.i, c2.i) - padding;
@@ -51,7 +57,7 @@ export function calculateReachableSquares(token, movementPaces) {
     const minJ = Math.min(c1.j, c2.j) - padding;
     const maxJ = Math.max(c1.j, c2.j) + padding;
 
-    // 4. Scan and Test Containment
+    // Scan for starting squares
     for (let i = minI; i <= maxI; i++) {
         for (let j = minJ; j <= maxJ; j++) {
             const center = grid.getCenterPoint({ i, j });
@@ -70,7 +76,12 @@ export function calculateReachableSquares(token, movementPaces) {
     
     // Fallback
     if (queue.length === 0) {
-        const centerOffset = grid.getOffset(token.center);
+        // If override provided, use that center. Else token center.
+        const centerPt = originOverride 
+            ? { x: startX + tw/2, y: startY + th/2 } 
+            : token.center;
+
+        const centerOffset = grid.getOffset(centerPt);
         const i = Math.round(centerOffset.i);
         const j = Math.round(centerOffset.j);
         const key = `${i}.${j}`;
@@ -83,7 +94,6 @@ export function calculateReachableSquares(token, movementPaces) {
     const searchLimit = maxDistance + costPerGridUnit; 
     const roundingRule = getRoundingMode();
 
-    // Find Limits
     const sortedPacesRef = [...scaledPaces].sort((a, b) => b.distance - a.distance);
     const limitPace = scaledPaces.find(p => p.isActionLimit) 
                    || scaledPaces.find(p => p.name === "Sprint")
@@ -95,7 +105,7 @@ export function calculateReachableSquares(token, movementPaces) {
     let iterations = 0;
     const MAX_ITERATIONS = 60000; 
 
-    // --- 3. DIJKSTRA BFS ---
+    // --- Dijkstra Calculation ---
     while (queue.length > 0) {
         iterations++;
         if (iterations > MAX_ITERATIONS) break;
@@ -115,7 +125,6 @@ export function calculateReachableSquares(token, movementPaces) {
                 {di: 1, dj: -1, isDiag: true}, {di: 1, dj: 1, isDiag: true}
             ];
         } else {
-            // Hex Neighbors
             neighbors = grid.getAdjacentOffsets({i: current.i, j: current.j}).map(n => ({
                 di: n.i - current.i,
                 dj: n.j - current.j
@@ -130,7 +139,6 @@ export function calculateReachableSquares(token, movementPaces) {
             const neighborCenter = grid.getCenterPoint({ i: nextI, j: nextJ });
             if (!canvas.dimensions.sceneRect.contains(neighborCenter.x, neighborCenter.y)) continue;
 
-            // Cost Calculation
             let stepDist = costPerGridUnit;
             if (gridType === CONST.GRID_TYPES.SQUARE && offset.isDiag) {
                 stepDist *= 1.4142;
@@ -143,7 +151,9 @@ export function calculateReachableSquares(token, movementPaces) {
             const existingCost = minCosts.get(neighborKey);
             if (existingCost !== undefined && newCost >= existingCost) continue;
 
-            // Wall Check
+            // Wall Check (Source = Token, but logic handles raycasting fine)
+            // Note: We use the token as the source object for wall permissions,
+            // even if the geometry is calculated from the "ghost" origin.
             const currentCenter = grid.getCenterPoint({ i: current.i, j: current.j });
             const rayDiffX = neighborCenter.x - currentCenter.x;
             const rayDiffY = neighborCenter.y - currentCenter.y;
@@ -160,7 +170,7 @@ export function calculateReachableSquares(token, movementPaces) {
         }
     }
 
-    // --- 4. PROCESS RESULTS ---
+    // --- Process Results ---
     const resultSquares = new Map();
     const sortedPaces = [...scaledPaces].sort((a, b) => a.distance - b.distance);
     const gridSizePixels = Number(grid.size);

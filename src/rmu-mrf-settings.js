@@ -1,5 +1,9 @@
 /**
- * RMU Movement Range Finder - Settings (Final RC)
+ * RMU Movement Range Finder - Settings
+ * ------------------------------------
+ * Manages module configuration.
+ * Uses a DOM-injection hook to enhance the standard settings menu with 
+ * native HTML color pickers for a better user experience.
  */
 
 export const MODULE_ID = "rmu-movement-range-finder";
@@ -9,7 +13,11 @@ export const SETTING_ROUNDING = "movementRounding";
 export const SETTING_OPACITY = "overlayOpacity";
 export const SETTING_SHOW_LABELS = "showDistanceLabels";
 
-// Color Keys
+// Experimental Toggles
+export const SETTING_EXPERIMENTAL_HEX = "experimentalHex"; 
+export const SETTING_EXPERIMENTAL_GRIDLESS = "experimentalGridless"; // NEW
+
+// Color Setting Keys
 export const SETTING_COLOR_CREEP  = "colorCreep";
 export const SETTING_COLOR_WALK   = "colorWalk";
 export const SETTING_COLOR_JOG    = "colorJog";
@@ -17,9 +25,12 @@ export const SETTING_COLOR_RUN    = "colorRun";
 export const SETTING_COLOR_SPRINT = "colorSprint";
 export const SETTING_COLOR_DASH   = "colorDash";
 
+/**
+ * Register all module settings.
+ */
 export function registerSettings() {
 
-    // 1. Toggle
+    // 1. Master Toggle
     game.settings.register(MODULE_ID, SETTING_ENABLED, {
         name: "Enable Movement Overlay",
         hint: "Toggle the visual overlay on/off. Can also be toggled via hotkey (Default: 'M').",
@@ -44,7 +55,7 @@ export function registerSettings() {
         precedence: CONST.KEYBINDING_PRECEDENCE.NORMAL
     });
 
-    // 2. Logic
+    // 2. Logic Settings
     game.settings.register(MODULE_ID, SETTING_ROUNDING, {
         name: "Grid Movement Rounding Rule",
         hint: "Determines if a unit can enter a square if they lack the full movement cost.",
@@ -60,7 +71,28 @@ export function registerSettings() {
         onChange: refreshOverlay
     });
 
-    // 3. Visuals
+    // 3. Experimental Toggles
+    game.settings.register(MODULE_ID, SETTING_EXPERIMENTAL_HEX, {
+        name: "Enable Experimental Hex Support",
+        hint: "Hex grids can cause pathfinding leaks in walled dungeons. Enable only for open maps.",
+        scope: "world",
+        config: true,
+        type: Boolean,
+        default: false, 
+        onChange: refreshOverlay
+    });
+
+    game.settings.register(MODULE_ID, SETTING_EXPERIMENTAL_GRIDLESS, {
+        name: "Enable Experimental Gridless Support",
+        hint: "Gridless mode uses direct distance (as the crow flies) and ignores walls. Best for open fields.",
+        scope: "world",
+        config: true,
+        type: Boolean,
+        default: false, 
+        onChange: refreshOverlay
+    });
+
+    // 4. Visual Settings
     game.settings.register(MODULE_ID, SETTING_OPACITY, {
         name: "Overlay Opacity",
         hint: "Transparency of the movement grid (0.1 = transparent, 1.0 = solid).",
@@ -82,7 +114,7 @@ export function registerSettings() {
         onChange: refreshOverlay
     });
 
-    // 4. Colors
+    // 5. Color Settings
     const defaultColors = {
         [SETTING_COLOR_CREEP]:  { name: "Creep",  color: "#00FFFF" }, 
         [SETTING_COLOR_WALK]:   { name: "Walk",   color: "#00FF00" }, 
@@ -124,10 +156,8 @@ Hooks.on("renderSettingsConfig", (app, html, data) => {
         if (input.length) {
             const picker = $(`<input type="color" style="margin-left: 5px; max-width: 40px; height: 26px; border: none; padding: 0; background: none; cursor: pointer;">`);
             picker.val(input.val());
-
             picker.on("change", (e) => input.val(e.target.value));
             input.on("change", (e) => picker.val(e.target.value));
-
             input.after(picker);
             input.css("flex", "0 0 70%");
         }
@@ -143,6 +173,8 @@ export function getVisualSettings() {
         enabled: game.settings.get(MODULE_ID, SETTING_ENABLED),
         opacity: game.settings.get(MODULE_ID, SETTING_OPACITY),
         showLabels: game.settings.get(MODULE_ID, SETTING_SHOW_LABELS),
+        experimentalHex: game.settings.get(MODULE_ID, SETTING_EXPERIMENTAL_HEX),
+        experimentalGridless: game.settings.get(MODULE_ID, SETTING_EXPERIMENTAL_GRIDLESS), // NEW
         colors: {
             "Creep":  game.settings.get(MODULE_ID, SETTING_COLOR_CREEP),
             "Walk":   game.settings.get(MODULE_ID, SETTING_COLOR_WALK),

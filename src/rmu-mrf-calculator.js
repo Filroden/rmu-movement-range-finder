@@ -27,9 +27,6 @@ export function getMovementPaces(token) {
         };
     });
 
-    // Debug output: Check console to see if Sprint/Dash distances are correct
-    console.log("RMU Movement Paces:", paces);
-
     // Sort by Distance Descending (Largest First) for the Renderer
     // The renderer draws Largest Circle (Dash) first, then overlays Smallest (Walk).
     paces.sort((a, b) => b.distance - a.distance);
