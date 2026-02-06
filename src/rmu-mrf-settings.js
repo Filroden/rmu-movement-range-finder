@@ -15,7 +15,7 @@ export const SETTING_SHOW_LABELS = "showDistanceLabels";
 
 // Experimental Toggles
 export const SETTING_EXPERIMENTAL_HEX = "experimentalHex"; 
-export const SETTING_EXPERIMENTAL_GRIDLESS = "experimentalGridless"; // NEW
+export const SETTING_EXPERIMENTAL_GRIDLESS = "experimentalGridless";
 
 // Color Setting Keys
 export const SETTING_COLOR_CREEP  = "colorCreep";
@@ -30,10 +30,10 @@ export const SETTING_COLOR_DASH   = "colorDash";
  */
 export function registerSettings() {
 
-    // 1. Master Toggle
+    // 1. Master Toggle & Keybindings
     game.settings.register(MODULE_ID, SETTING_ENABLED, {
-        name: "Enable Movement Overlay",
-        hint: "Toggle the visual overlay on/off. Can also be toggled via hotkey (Default: 'M').",
+        name: game.i18n.localize("RMU_MRF.settings.enableOverlay.name"),
+        hint: game.i18n.localize("RMU_MRF.settings.enableOverlay.hint"),
         scope: "client",
         config: true,
         type: Boolean,
@@ -42,14 +42,29 @@ export function registerSettings() {
     });
 
     game.keybindings.register(MODULE_ID, "toggleOverlay", {
-        name: "Toggle Movement Overlay",
-        hint: "Shows or hides the RMU movement range finder.",
+        name: game.i18n.localize("RMU_MRF.keybindings.toggleOverlay.name"),
+        hint: game.i18n.localize("RMU_MRF.keybindings.toggleOverlay.hint"),
         editable: [{ key: "KeyM" }],
         onDown: () => {
             const current = game.settings.get(MODULE_ID, SETTING_ENABLED);
             game.settings.set(MODULE_ID, SETTING_ENABLED, !current);
             const newState = !current;
-            ui.notifications.info(`RMU Movement: ${newState ? "Enabled" : "Disabled"}`);
+            const message = newState 
+                ? game.i18n.localize("RMU_MRF.notifications.enabled") 
+                : game.i18n.localize("RMU_MRF.notifications.disabled");
+            ui.notifications.info(message);
+        },
+        restricted: false,
+        precedence: CONST.KEYBINDING_PRECEDENCE.NORMAL
+    });
+
+    // Reset Anchor Keybinding
+    game.keybindings.register(MODULE_ID, "resetAnchor", {
+        name: game.i18n.localize("RMU_MRF.keybindings.resetAnchor.name"),
+        hint: game.i18n.localize("RMU_MRF.keybindings.resetAnchor.hint"),
+        editable: [{ key: "KeyM", modifiers: [ "Control" ] }], // Ctrl + M
+        onDown: () => {
+            Hooks.callAll("rmuMRFResetAnchor");
         },
         restricted: false,
         precedence: CONST.KEYBINDING_PRECEDENCE.NORMAL
@@ -57,24 +72,24 @@ export function registerSettings() {
 
     // 2. Logic Settings
     game.settings.register(MODULE_ID, SETTING_ROUNDING, {
-        name: "Grid Movement Rounding Rule",
-        hint: "Determines if a unit can enter a square if they lack the full movement cost.",
+        name: game.i18n.localize("RMU_MRF.settings.movementRounding.name"),
+        hint: game.i18n.localize("RMU_MRF.settings.movementRounding.hint"),
         scope: "world",
         config: true,
         type: String,
         default: "full",
         choices: {
-            "any": "Permissive: Enter if ANY movement remains (> 0)",
-            "half": "Standard: Enter if > 50% of grid cost remains",
-            "full": "Strict: Enter only if FULL grid cost remains (100%)"
+            "any": game.i18n.localize("RMU_MRF.settings.movementRounding.choices.any"),
+            "half": game.i18n.localize("RMU_MRF.settings.movementRounding.choices.half"),
+            "full": game.i18n.localize("RMU_MRF.settings.movementRounding.choices.full")
         },
         onChange: refreshOverlay
     });
 
     // 3. Experimental Toggles
     game.settings.register(MODULE_ID, SETTING_EXPERIMENTAL_HEX, {
-        name: "Enable Experimental Hex Support",
-        hint: "Hex grids can cause pathfinding leaks in walled dungeons. Enable only for open maps.",
+        name: game.i18n.localize("RMU_MRF.settings.experimentalHex.name"),
+        hint: game.i18n.localize("RMU_MRF.settings.experimentalHex.hint"),
         scope: "world",
         config: true,
         type: Boolean,
@@ -83,8 +98,8 @@ export function registerSettings() {
     });
 
     game.settings.register(MODULE_ID, SETTING_EXPERIMENTAL_GRIDLESS, {
-        name: "Enable Experimental Gridless Support",
-        hint: "Gridless mode uses direct distance (as the crow flies) and ignores walls. Best for open fields.",
+        name: game.i18n.localize("RMU_MRF.settings.experimentalGridless.name"),
+        hint: game.i18n.localize("RMU_MRF.settings.experimentalGridless.hint"),
         scope: "world",
         config: true,
         type: Boolean,
@@ -94,19 +109,19 @@ export function registerSettings() {
 
     // 4. Visual Settings
     game.settings.register(MODULE_ID, SETTING_OPACITY, {
-        name: "Overlay Opacity",
-        hint: "Transparency of the movement grid (0.1 = transparent, 1.0 = solid).",
+        name: game.i18n.localize("RMU_MRF.settings.overlayOpacity.name"),
+        hint: game.i18n.localize("RMU_MRF.settings.overlayOpacity.hint"),
         scope: "client",
         config: true,
         type: Number,
-        range: { min: 0.1, max: 1.0, step: 0.1 },
+        range: { min: 0.0, max: 1.0, step: 0.05 },
         default: 0.4,
         onChange: refreshOverlay
     });
 
     game.settings.register(MODULE_ID, SETTING_SHOW_LABELS, {
-        name: "Show Distance Labels",
-        hint: "Display the distance cost (e.g., '15 ft') on every grid square.",
+        name: game.i18n.localize("RMU_MRF.settings.showDistanceLabels.name"),
+        hint: game.i18n.localize("RMU_MRF.settings.showDistanceLabels.hint"),
         scope: "client",
         config: true,
         type: Boolean,
@@ -126,7 +141,10 @@ export function registerSettings() {
 
     for (const [key, data] of Object.entries(defaultColors)) {
         game.settings.register(MODULE_ID, key, {
-            name: `Color: ${data.name}`,
+            // Localize the pace name and format it into the "Color: [Pace]" string
+            name: game.i18n.format("RMU_MRF.settings.colorPace", { 
+                pace: game.i18n.localize(`RMU_MRF.paces.${data.name}`) 
+            }),
             scope: "client",
             config: true,
             type: String,
@@ -174,7 +192,7 @@ export function getVisualSettings() {
         opacity: game.settings.get(MODULE_ID, SETTING_OPACITY),
         showLabels: game.settings.get(MODULE_ID, SETTING_SHOW_LABELS),
         experimentalHex: game.settings.get(MODULE_ID, SETTING_EXPERIMENTAL_HEX),
-        experimentalGridless: game.settings.get(MODULE_ID, SETTING_EXPERIMENTAL_GRIDLESS), // NEW
+        experimentalGridless: game.settings.get(MODULE_ID, SETTING_EXPERIMENTAL_GRIDLESS), 
         colors: {
             "Creep":  game.settings.get(MODULE_ID, SETTING_COLOR_CREEP),
             "Walk":   game.settings.get(MODULE_ID, SETTING_COLOR_WALK),
