@@ -56,9 +56,14 @@ function _drawGridHighlight(token, squareMap, settings) {
     graphics.name = "rmuMovementGraphics";
     graphics.eventMode = 'none';
 
+    // Calculate dynamic font size based on grid size (15% of grid size)
+    // Default 100px grid -> 15px font. 300px grid -> 45px font.
+    const gridSize = canvas.scene.grid.size;
+    const fontSize = Math.max(10, Math.floor(gridSize * 0.15));
+
     const textStyle = new PIXI.TextStyle({
         fontFamily: "Arial",
-        fontSize: 11,
+        fontSize: fontSize,
         fontWeight: "bold",
         fill: "white",
         stroke: "black",
@@ -127,7 +132,6 @@ function _drawGridHighlight(token, squareMap, settings) {
 
     // --- OUTER BOUNDARY LINE (Square Grid Only) ---
     // This draws the heavy "Limit Line" around the 1 AP / Sprint zone.
-    // This remains the primary visual indicator for limits on Square maps.
     if (canvas.grid.type === CONST.GRID_TYPES.SQUARE) {
         for (const [key, square] of squareMap) {
             if (!square.isInnerZone) continue;
@@ -231,10 +235,11 @@ function _drawConcentricRings(token, paces, settings, anchor) {
         graphics.drawCircle(centerX, centerY, 4);
         graphics.endFill();
 
-        // Draw Label Text
+        // Draw Label Text - Scaled for visibility on high-res maps
+        const fontSize = Math.max(16, Math.floor(canvas.scene.grid.size * 0.2));
         const textStyle = new PIXI.TextStyle({
             fontFamily: "Arial",
-            fontSize: 16,
+            fontSize: fontSize,
             fontWeight: "bold",
             fill: "white",
             stroke: "black",
