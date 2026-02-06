@@ -3,7 +3,7 @@
  * ------------------------------------
  * Manages module configuration.
  * Uses a DOM-injection hook to enhance the standard settings menu with 
- * native HTML color pickers for a better user experience.
+ * native HTML colour pickers and properly localised labels.
  */
 
 export const MODULE_ID = "rmu-movement-range-finder";
@@ -17,7 +17,7 @@ export const SETTING_SHOW_LABELS = "showDistanceLabels";
 export const SETTING_EXPERIMENTAL_HEX = "experimentalHex"; 
 export const SETTING_EXPERIMENTAL_GRIDLESS = "experimentalGridless";
 
-// Color Setting Keys
+// Colour Setting Keys
 export const SETTING_COLOR_CREEP  = "colorCreep";
 export const SETTING_COLOR_WALK   = "colorWalk";
 export const SETTING_COLOR_JOG    = "colorJog";
@@ -129,7 +129,7 @@ export function registerSettings() {
         onChange: refreshOverlay
     });
 
-    // 5. Color Settings
+    // 5. Colour Settings
     const defaultColors = {
         [SETTING_COLOR_CREEP]:  { name: "Creep",  color: "#00FFFF" }, 
         [SETTING_COLOR_WALK]:   { name: "Walk",   color: "#00FF00" }, 
@@ -141,10 +141,7 @@ export function registerSettings() {
 
     for (const [key, data] of Object.entries(defaultColors)) {
         game.settings.register(MODULE_ID, key, {
-            // Localize the pace name and format it into the "Color: [Pace]" string
-            name: game.i18n.format("RMU_MRF.settings.colorPace", { 
-                pace: game.i18n.localize(`RMU_MRF.paces.${data.name}`) 
-            }),
+            name: `Color: ${data.name}`, 
             scope: "client",
             config: true,
             type: String,
@@ -154,7 +151,7 @@ export function registerSettings() {
     }
 }
 
-// Hook: Inject Color Pickers
+// Hook: Inject Colour Pickers and Labels
 Hooks.on("renderSettingsConfig", (app, html, data) => {
     const $html = $(html);
     
@@ -168,16 +165,26 @@ Hooks.on("renderSettingsConfig", (app, html, data) => {
     ];
 
     colorSettings.forEach(key => {
-        const name = `${MODULE_ID}.${key}`;
-        const input = $html.find(`input[name="${name}"]`);
+        const settingName = `${MODULE_ID}.${key}`;
+        const input = $html.find(`input[name="${settingName}"]`);
         
         if (input.length) {
+            // 1. Inject Colour Picker
             const picker = $(`<input type="color" style="margin-left: 5px; max-width: 40px; height: 26px; border: none; padding: 0; background: none; cursor: pointer;">`);
             picker.val(input.val());
             picker.on("change", (e) => input.val(e.target.value));
             input.on("change", (e) => picker.val(e.target.value));
             input.after(picker);
             input.css("flex", "0 0 70%");
+
+            // 2. Label Formatting
+            const paceName = key.replace("color", ""); 
+            const localizedPace = game.i18n.localize(`RMU_MRF.paces.${paceName}`);
+            const correctLabel = game.i18n.format("RMU_MRF.settings.colorPace", { pace: localizedPace });
+
+            // Find the label element in the form group and update text
+            const formGroup = input.closest(".form-group");
+            formGroup.find("label").text(correctLabel);
         }
     });
 });
