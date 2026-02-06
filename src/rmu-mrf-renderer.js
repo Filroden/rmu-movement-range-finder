@@ -46,7 +46,10 @@ export function clearOverlay() {
     }
 }
 
-// ... [ _drawGridHighlight remains unchanged ] ...
+/**
+ * Draws the highlighted grid squares/hexes.
+ * Uses a "Dual Vision" check to light up squares as the token Scouts.
+ */
 function _drawGridHighlight(token, squareMap, settings) {
     const container = canvas.interface.reverseMask || canvas.interface;
     const graphics = new PIXI.Graphics();
@@ -78,6 +81,7 @@ function _drawGridHighlight(token, squareMap, settings) {
             centerY = square.y + square.h/2;
         }
 
+        // --- DUAL VISION CHECK ---
         const isPlayerToken = token.document.hasPlayerOwner;
         const shouldEnforceFog = !game.user.isGM || isPlayerToken;
 
@@ -91,18 +95,12 @@ function _drawGridHighlight(token, squareMap, settings) {
         }
 
         const colorInt = Color.from(square.color).valueOf();
-        const colorStr = String(square.color).toLowerCase();
-        const limitStr = String(square.limitColor).toLowerCase();
-        const isLimitZone = (colorStr === limitStr);
 
+        // --- STANDARD BORDER ---
         graphics.beginFill(colorInt, settings.opacity);
+        graphics.lineStyle(1, 0x000000, 0.3);
 
-        if (isLimitZone) {
-            graphics.lineStyle(3, 0x000000, 0.5);
-        } else {
-            graphics.lineStyle(1, 0x000000, 0.3);
-        }
-
+        // Draw Shape
         if (isHex) {
             const vertices = canvas.grid.getVertices({i: square.i, j: square.j});
             if (vertices && vertices.length > 0) {
@@ -116,6 +114,7 @@ function _drawGridHighlight(token, squareMap, settings) {
 
         graphics.endFill();
 
+        // Draw Labels
         if (settings.showLabels) {
             const dist = parseFloat(square.cost.toFixed(1));
             const labelText = `${dist} ${gridUnit}`;
@@ -126,6 +125,9 @@ function _drawGridHighlight(token, squareMap, settings) {
         }
     }
 
+    // --- OUTER BOUNDARY LINE (Square Grid Only) ---
+    // This draws the heavy "Limit Line" around the 1 AP / Sprint zone.
+    // This remains the primary visual indicator for limits on Square maps.
     if (canvas.grid.type === CONST.GRID_TYPES.SQUARE) {
         for (const [key, square] of squareMap) {
             if (!square.isInnerZone) continue;
@@ -143,6 +145,8 @@ function _drawGridHighlight(token, squareMap, settings) {
             }
 
             const borderColor = Color.from(square.limitColor).valueOf();
+
+            // Limit Line: 4px Solid
             graphics.lineStyle(4, borderColor, 1.0);
 
             const x = square.x; const y = square.y;
@@ -158,6 +162,7 @@ function _drawGridHighlight(token, squareMap, settings) {
             const left   = squareMap.get(leftKey);
             const right  = squareMap.get(rightKey);
 
+            // Draw line if neighbour is NOT in the inner zone (i.e., it's the edge)
             if (!top || !top.isInnerZone) { graphics.moveTo(x, y); graphics.lineTo(x + w, y); }
             if (!bottom || !bottom.isInnerZone) { graphics.moveTo(x, y + h); graphics.lineTo(x + w, y + h); }
             if (!left || !left.isInnerZone) { graphics.moveTo(x, y); graphics.lineTo(x, y + h); }
@@ -170,7 +175,7 @@ function _drawGridHighlight(token, squareMap, settings) {
 
 /**
  * Draws concentric rings for Gridless scenes.
- * FIXED: Now centers rings on the ANCHOR, not the Token.
+ * Centres rings on the ANCHOR, not the Token.
  * Draws a ruler line from Anchor -> Token.
  */
 function _drawConcentricRings(token, paces, settings, anchor) {
@@ -179,20 +184,17 @@ function _drawConcentricRings(token, paces, settings, anchor) {
 
     const sortedPaces = [...paces].sort((a, b) => b.distance - a.distance);
 
-    // Metric Conversion
     const units = canvas.scene.grid.units?.toLowerCase();
     const isMetric = units && METRIC_UNITS.includes(units);
     const distanceScale = isMetric ? (1 / FT_PER_METER) : 1;
 
-    // Use Anchor center if available, otherwise token center
-    // Note: Anchor is top-left, so we add width/height to get center
+    // Use Anchor centre if available, otherwise token centre
     const centerX = anchor ? (anchor.x + token.w/2) : token.center.x;
     const centerY = anchor ? (anchor.y + token.h/2) : token.center.y;
 
     // 1. Draw Rings around Anchor
     for (const pace of sortedPaces) {
         const adjustedDist = pace.distance * distanceScale;
-        // In gridless, scene.grid.distance is usually 1, but we keep the math safe
         const pixelRadius = (adjustedDist / canvas.scene.grid.distance) * canvas.scene.grid.size;
         const colorInt = Color.from(pace.color).valueOf();
 
@@ -210,23 +212,17 @@ function _drawConcentricRings(token, paces, settings, anchor) {
     }
 
     // 2. Draw Travel Ruler (Anchor -> Token)
-    // Only draw if we have moved slightly
     const dx = token.center.x - centerX;
     const dy = token.center.y - centerY;
     const distSq = dx*dx + dy*dy;
 
-    if (distSq > 100) { // Slight buffer
+    if (distSq > 100) { 
         const distPx = Math.sqrt(distSq);
-        // Convert pixels back to map units (e.g. feet)
         const unitsMoved = (distPx / canvas.scene.grid.size) * canvas.scene.grid.distance;
-        
-        // Inverse metric scaling to show "Feet" (or Map Units) correctly
-        // If map is meters, unitsMoved is meters. If map is feet, it's feet.
-        // We generally display what the map says.
         const label = `${Math.round(unitsMoved)} ${canvas.scene.grid.units}`;
 
         // Draw Line
-        graphics.lineStyle(3, 0xFFFFFF, 1.0); // White line
+        graphics.lineStyle(3, 0xFFFFFF, 1.0); 
         graphics.moveTo(centerX, centerY);
         graphics.lineTo(token.center.x, token.center.y);
 
@@ -245,8 +241,7 @@ function _drawConcentricRings(token, paces, settings, anchor) {
             strokeThickness: 4
         });
         const text = new PIXI.Text(label, textStyle);
-        text.anchor.set(0.5, 1); // Center bottom
-        // Position text halfway along line
+        text.anchor.set(0.5, 1); 
         text.position.set(centerX + dx/2, centerY + dy/2);
         graphics.addChild(text);
     }

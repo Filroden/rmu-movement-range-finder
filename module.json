@@ -1,8 +1,8 @@
 {
   "id": "rmu-movement-range-finder",
   "title": "RMU Movement Range Finder",
-  "description": "My greatest work",
-  "version": "1.0.0-beta1",
+  "description": "RMU Movement Range Finder is a tactical aid for the Rolemaster Unified (RMU) system. It calculates and visualises how far a token can move based on their Base Movement Rate and the cost of the grid, taking into account walls and movement paces (Walk, Run, Sprint, etc.).",
+  "version": "1.0.0",
   "compatibility": {
     "minimum": "13",
     "verified": "13.351"
@@ -24,11 +24,12 @@
   "esmodules": [ "main.js" ],
   "styles": [ ],
   "languages": [
-    { "lang": "en", "name": "English", "path": "languages/en.json" }
+    { "lang": "en", "name": "English", "path": "languages/en.json" },
+    { "lang": "en-GB", "name": "English (UK)", "path": "languages/en-gb.json" }
   ],
   "url": "https://github.com/Filroden/rmu-movement-range-finder",
   "manifest": "https://github.com/Filroden/rmu-movement-range-finder/releases/latest/download/module.json",
-  "download": "https://github.com/Filroden/rmu-movement-range-finder/releases/download/v1.0.0-beta1/rmu-movement-range-finder.zip",
+  "download": "https://github.com/Filroden/rmu-movement-range-finder/releases/download/v1.0.0/rmu-movement-range-finder.zip",
   "bugs": "https://github.com/Filroden/rmu-movement-range-finder/issues",
   "readme": "https://github.com/Filroden/rmu-movement-range-finder/blob/main/README.md",
   "license": "https://mit-license.org/"

@@ -30,7 +30,7 @@
         "name": "Show Distance Labels",
         "hint": "Display the distance cost (e.g., '15 ft') on every grid square."
       },
-      "colorPace": "Color: {pace}"
+      "colorPace": "Colour: {pace}"
     },
     "keybindings": {
       "toggleOverlay": {
