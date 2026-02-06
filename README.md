@@ -15,6 +15,8 @@
 
 It features an **"Anchor & Scout"** system that allows players to move their token to "peek" around corners without losing track of their original movement starting point.
 
+![Anchor and Scout system](https://github.com/Filroden/rmu-movement-range-finder/blob/main/assets/screenshots/anchor_and_scout.gif)
+
 ## Features
 
 * **Anchor & Scout Logic:**
