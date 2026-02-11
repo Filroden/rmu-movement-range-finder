@@ -12,7 +12,11 @@
 
 import { calculateReachableSquares } from "./src/rmu-mrf-pathfinding.js";
 import { drawOverlay, clearOverlay } from "./src/rmu-mrf-renderer.js";
-import { registerSettings, getVisualSettings, MODULE_ID } from "./src/rmu-mrf-settings.js";
+import {
+    registerSettings,
+    getVisualSettings,
+    MODULE_ID,
+} from "./src/rmu-mrf-settings.js";
 import { getMovementPaces } from "./src/rmu-mrf-calculator.js";
 
 // ANCHOR CACHE
@@ -24,9 +28,9 @@ const _anchorCache = new Map();
 // Stores the calculated result for the *currently selected* token to optimize re-renders.
 let _cachedData = {
     tokenId: null,
-    anchor: null, 
+    anchor: null,
     result: null,
-    mode: null
+    mode: null,
 };
 
 Hooks.once("init", () => {
@@ -41,24 +45,24 @@ Hooks.once("ready", () => {
 });
 
 Hooks.on("sightRefresh", () => {
-    triggerUpdate(false); 
+    triggerUpdate(false);
 });
 
 // Manual Anchor Reset Hook (Ctrl + M)
 Hooks.on("rmuMRFResetAnchor", () => {
     const tokens = canvas.tokens.controlled;
     if (tokens.length !== 1) return;
-    
+
     const token = tokens[0];
     const newAnchor = { x: token.document.x, y: token.document.y };
-    
+
     // Update both the persistent map and current session cache
     _anchorCache.set(token.id, newAnchor);
     _cachedData.anchor = newAnchor;
-    
+
     // Invalidate result to force new pathfinding from new origin
     _cachedData.result = null;
-    
+
     ui.notifications.info("RMU Movement: Anchor Reset");
     triggerUpdate(true);
 });
@@ -76,7 +80,12 @@ Hooks.on("deleteToken", (document) => {
 });
 
 Hooks.on("updateScene", (document, change, options, userId) => {
-    if (change.grid || change.gridType || change.gridDistance || change.gridUnits) {
+    if (
+        change.grid ||
+        change.gridType ||
+        change.gridDistance ||
+        change.gridUnits
+    ) {
         _anchorCache.clear(); // Grid changed, all old anchors are invalid
         triggerUpdate(true);
     }
@@ -86,11 +95,9 @@ Hooks.on("controlToken", (token, controlled) => {
     if (controlled) {
         if (canvas.tokens.controlled.length === 1) {
             _cachedData.tokenId = token.id;
-            _cachedData.result = null; 
+            _cachedData.result = null;
 
-            // IMPORTANT: Do NOT auto-set anchor to current position.
-            // Check cache first. If this token has a saved anchor, use it.
-            // This allows deselecting/reselecting without losing progress.
+            // Do NOT auto-set anchor to current position.
             let savedAnchor = _anchorCache.get(token.id);
             if (!savedAnchor) {
                 // First time selecting this token? Set anchor to current.
@@ -99,7 +106,7 @@ Hooks.on("controlToken", (token, controlled) => {
             }
             _cachedData.anchor = savedAnchor;
 
-            triggerUpdate(true); 
+            triggerUpdate(true);
         } else {
             clearOverlay();
         }
@@ -114,7 +121,7 @@ Hooks.on("updateToken", (document, change, options, userId) => {
     if (!document.object?.controlled) return;
     if (change.x || change.y) {
         // Token moved. We keep the anchor (Start of turn) and just refresh visibility.
-        triggerUpdate(false); 
+        triggerUpdate(false);
     }
 });
 
@@ -134,28 +141,15 @@ function triggerUpdate(forceRecalc) {
 
     // --- GRID SUPPORT GATES ---
     const gridType = canvas.grid.type;
-    const isGridless = (gridType === CONST.GRID_TYPES.GRIDLESS);
-    const isSquare = (gridType === CONST.GRID_TYPES.SQUARE);
-    const isHex = !isGridless && !isSquare;
 
-    // Gate 1: Hex Grids
-    if (isHex && !settings.experimentalHex) {
-        console.warn("RMU Movement: Hex grids are currently unsupported in V1 (Wall Leaks). Enable 'Experimental Hex' in settings to force.");
-        clearOverlay();
-        return;
-    }
-
-    // Gate 2: Gridless
-    if (isGridless && !settings.experimentalGridless) {
-        console.warn("RMU Movement: Gridless mode ignores walls (Euclidean Distance). Enable 'Experimental Gridless' in settings to force.");
+    if (gridType === CONST.GRID_TYPES.GRIDLESS) {
+        // Gridless is unsupported in v1.1. Fail silently/cleanly.
         clearOverlay();
         return;
     }
 
     const paces = getMovementPaces(token);
     if (!paces || paces.length === 0) return;
-
-    const mode = isGridless ? "gridless" : "grid";
 
     // Double check anchor integrity
     let anchor = _cachedData.anchor;
@@ -171,19 +165,14 @@ function triggerUpdate(forceRecalc) {
     }
 
     if (!forceRecalc && _cachedData.result) {
-        drawOverlay(token, _cachedData.result, mode, anchor);
+        drawOverlay(token, _cachedData.result, "grid", anchor);
         return;
     }
 
-    let dataToRender = null;
-    if (isGridless) {
-        dataToRender = paces; 
-    } else {
-        dataToRender = calculateReachableSquares(token, paces, anchor);
-    }
+    // Calculate (Square or Hex)
+    const dataToRender = calculateReachableSquares(token, paces, anchor);
 
     _cachedData.result = dataToRender;
-    _cachedData.mode = mode;
 
-    drawOverlay(token, dataToRender, mode, anchor);
+    drawOverlay(token, dataToRender, "grid", anchor);
 }
