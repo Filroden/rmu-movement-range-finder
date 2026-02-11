@@ -19,6 +19,9 @@ export function calculateReachableSquares(
         return new Map();
 
     const grid = canvas.grid;
+    // Safety check: Abort if gridless (though main.js should catch this)
+    if (grid.type === CONST.GRID_TYPES.GRIDLESS) return new Map();
+
     const isHex = grid.type !== CONST.GRID_TYPES.SQUARE;
 
     // Metric Scaling
