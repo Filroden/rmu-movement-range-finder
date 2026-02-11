@@ -1,8 +1,13 @@
 /**
  * RMU Movement Range Finder - Pathfinding (Unified Strict Safety)
  * ---------------------------------------------------------------
- * 1. Square: Uses Dijkstra with STRICT center checks (Fixes 45-degree wall leaks).
- * 2. Hex: Uses Dijkstra with Jump/Bridge logic (Fixes bisected corridors).
+ * 1. Square: Uses Dijkstra with STRICT center checks.
+ * 2. Hex: Uses Dijkstra with Jump/Bridge logic.
+ *
+ * CRITICAL FIX: "Safety Priority"
+ * We now overwrite a "Ghost" (Unsafe) path with a "Real" (Safe) path,
+ * even if the real path is longer. This prevents wall-jumps from blocking
+ * legitimate corridor traversal.
  */
 
 import { getRoundingMode } from "./rmu-mrf-settings.js";
@@ -19,7 +24,6 @@ export function calculateReachableSquares(
         return new Map();
 
     const grid = canvas.grid;
-    // Safety check: Abort if gridless (though main.js should catch this)
     if (grid.type === CONST.GRID_TYPES.GRIDLESS) return new Map();
 
     const isHex = grid.type !== CONST.GRID_TYPES.SQUARE;
@@ -73,8 +77,6 @@ export function calculateReachableSquares(
 
 /**
  * ALGORITHM 1: SQUARE GRID
- * Standard Dijkstra, but upgraded to use checkCellStrict.
- * This ensures we don't snap to centers that are inside diagonal walls.
  */
 function _calculateSquare(
     token,
@@ -143,6 +145,7 @@ function _calculateSquare(
         const current = queue.shift();
         const currentKey = `${current.i}.${current.j}`;
 
+        // Standard Dijkstra Skip
         if (current.cost > minCosts.get(currentKey)) continue;
 
         const currentCenter = grid.getCenterPoint({
@@ -200,14 +203,20 @@ function _calculateSquare(
 
             const newCost = current.cost + stepDist;
             if (newCost > searchLimit) continue;
-            if (
-                minCosts.has(neighborKey) &&
-                newCost >= minCosts.get(neighborKey)
-            )
-                continue;
 
-            // UPDATED: Use Strict Check (was Simple)
-            // This forces a check against isPointClearOfWalls()
+            // --- SAFETY PRIORITY CHECK ---
+            const oldCost = minCosts.get(neighborKey);
+            const wasSafe = safetyMap.get(neighborKey);
+            const isNowSafe = true; // Squares are always "Safe" if reachable
+
+            // Standard check: Is new path more expensive?
+            if (oldCost !== undefined && newCost >= oldCost) {
+                // EXCEPTION: If old was Unsafe and new is Safe, allow overwrite!
+                // (Square grids don't currently use Ghost/Unsafe, but good for future proofing)
+                if (wasSafe && !isNowSafe) continue; // Downgrade? No.
+                if (wasSafe === isNowSafe) continue; // Same safety? Use cost.
+            }
+
             const isReachable = checkCellStrict(
                 token,
                 currentCenter,
@@ -234,7 +243,7 @@ function _calculateSquare(
 
 /**
  * ALGORITHM 2: HEX GRID
- * Complex Jump/Bridge logic for Hexes.
+ * Includes Safety Priority Logic to fix "Ghost Blocking".
  */
 function _calculateHex(
     token,
@@ -300,6 +309,9 @@ function _calculateHex(
         const current = queue.shift();
         const currentKey = `${current.i}.${current.j}`;
 
+        // Standard Skip: If we found a cheaper way to get here, ignore this path.
+        // NOTE: We do NOT check safety here because the queue sort guarantees
+        // we process the cheapest path first. We handle safety logic at the PUSH moment.
         if (current.cost > minCosts.get(currentKey)) continue;
 
         const neighbors = grid.getAdjacentOffsets({
@@ -327,7 +339,7 @@ function _calculateHex(
 
             let stepDist = costPerGridUnit;
 
-            // 1. Direct Path
+            // --- 1. DIRECT PATH (Adjacent) ---
             const isDirectReachable = checkCellStrict(
                 token,
                 currentCenter,
@@ -337,18 +349,32 @@ function _calculateHex(
 
             if (isDirectReachable) {
                 const newCost = current.cost + stepDist;
-                if (newCost > searchLimit) continue;
-                if (
-                    minCosts.has(neighborKey) &&
-                    newCost >= minCosts.get(neighborKey)
-                )
-                    continue;
 
-                minCosts.set(neighborKey, newCost);
-                safetyMap.set(neighborKey, true);
-                queue.push({ i: nextI, j: nextJ, cost: newCost });
+                if (newCost <= searchLimit) {
+                    const oldCost = minCosts.get(neighborKey);
+                    const wasSafe = safetyMap.get(neighborKey);
+                    const isNowSafe = true; // Direct path is always Safe
+
+                    // UPDATE LOGIC:
+                    // 1. If never visited, update.
+                    // 2. If new path is cheaper, update.
+                    // 3. CRITICAL: If old path was UNSAFE (Ghost) and new path is SAFE, update (even if more expensive).
+                    let shouldUpdate = false;
+                    if (oldCost === undefined) shouldUpdate = true;
+                    else if (wasSafe === false && isNowSafe === true)
+                        shouldUpdate = true; // Upgrade to Safe!
+                    else if (newCost < oldCost && wasSafe === isNowSafe)
+                        shouldUpdate = true; // Cheaper same-tier path
+
+                    if (shouldUpdate) {
+                        minCosts.set(neighborKey, newCost);
+                        safetyMap.set(neighborKey, true);
+                        queue.push({ i: nextI, j: nextJ, cost: newCost });
+                    }
+                }
             } else {
-                // 2. Jump/Bridge Logic
+                // --- 2. JUMP/BRIDGE LOGIC ---
+                // We only check jumps if direct is blocked.
                 const jumpNeighbors = grid.getAdjacentOffsets({
                     i: nextI,
                     j: nextJ,
@@ -371,22 +397,45 @@ function _calculateHex(
                         if (jumpCost > searchLimit) continue;
 
                         const jumpKey = `${jumpI}.${jumpJ}`;
-                        if (
-                            !minCosts.has(jumpKey) ||
-                            jumpCost < minCosts.get(jumpKey)
-                        ) {
+                        const bridgeCost = current.cost + stepDist;
+
+                        // A. UPDATE THE JUMP TARGET (Safe)
+                        const oldJumpCost = minCosts.get(jumpKey);
+                        const jumpWasSafe = safetyMap.get(jumpKey);
+                        const jumpIsSafe = true;
+
+                        let updateJump = false;
+                        if (oldJumpCost === undefined) updateJump = true;
+                        else if (jumpWasSafe === false && jumpIsSafe === true)
+                            updateJump = true;
+                        else if (
+                            jumpCost < oldJumpCost &&
+                            jumpWasSafe === jumpIsSafe
+                        )
+                            updateJump = true;
+
+                        if (updateJump) {
                             minCosts.set(jumpKey, jumpCost);
                             safetyMap.set(jumpKey, true);
                             queue.push({ i: jumpI, j: jumpJ, cost: jumpCost });
                         }
 
-                        const bridgeCost = current.cost + stepDist;
-                        if (
-                            !minCosts.has(neighborKey) ||
-                            bridgeCost < minCosts.get(neighborKey)
-                        ) {
+                        // B. UPDATE THE BRIDGE (Ghost / Unsafe)
+                        // Note: We never overwrite a Safe bridge with a Ghost bridge.
+                        const oldBridgeCost = minCosts.get(neighborKey);
+                        const bridgeWasSafe = safetyMap.get(neighborKey);
+                        const bridgeIsSafe = false;
+
+                        let updateBridge = false;
+                        if (oldBridgeCost === undefined) updateBridge = true;
+                        else if (bridgeWasSafe === true)
+                            updateBridge = false; // Never downgrade a Safe node
+                        else if (bridgeCost < oldBridgeCost)
+                            updateBridge = true; // Cheaper Ghost path
+
+                        if (updateBridge) {
                             minCosts.set(neighborKey, bridgeCost);
-                            safetyMap.set(neighborKey, false); // Ghost
+                            safetyMap.set(neighborKey, false); // Mark as Ghost
                         }
                     }
                 }
@@ -405,22 +454,22 @@ function _calculateHex(
 
 // --- HELPERS ---
 
-/** * Strict safety check for both Square and Hex.
- * 1. Checks if point is inside a wall.
- * 2. Raycasts from center to center.
+/**
+ * Strict safety check.
+ * Source: NULL to enforce pure geometry check (prevents Token Size from blocking corridors).
  */
 function checkCellStrict(token, originPoint, i, j) {
     const grid = canvas.grid;
     const destCenter = grid.getCenterPoint({ i, j });
 
-    // 1. Safety Check (This fixes the 45-degree leak)
+    // 1. Safety Check
     if (!isPointClearOfWalls(destCenter)) return false;
 
-    // 2. Raycast
+    // 2. Raycast (Pure Geometry)
     return !CONFIG.Canvas.polygonBackends.move.testCollision(
         originPoint,
         destCenter,
-        { type: "move", mode: "any", source: token },
+        { type: "move", mode: "any", source: null },
     );
 }
 
