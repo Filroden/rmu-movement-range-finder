@@ -19,6 +19,12 @@ import {
 } from "./src/rmu-mrf-settings.js";
 import { getMovementPaces } from "./src/rmu-mrf-calculator.js";
 
+const VALID_ACTOR_TYPES = ["Character", "Creature"];
+
+const isValidActor = (token) => {
+    return token?.actor && VALID_ACTOR_TYPES.includes(token.actor.type);
+};
+
 // ANCHOR CACHE
 // Stores the start point {x, y} for every token ID seen this session.
 // This persists even if you deselect/reselect the token.
@@ -54,6 +60,9 @@ Hooks.on("rmuMRFResetAnchor", () => {
     if (tokens.length !== 1) return;
 
     const token = tokens[0];
+
+    if (!isValidActor(token)) return;
+
     const newAnchor = { x: token.document.x, y: token.document.y };
 
     // Update both the persistent map and current session cache
@@ -94,6 +103,11 @@ Hooks.on("updateScene", (document, change, options, userId) => {
 Hooks.on("controlToken", (token, controlled) => {
     if (controlled) {
         if (canvas.tokens.controlled.length === 1) {
+            if (!isValidActor(token)) {
+                clearOverlay();
+                return;
+            }
+
             _cachedData.tokenId = token.id;
             _cachedData.result = null;
 
@@ -133,6 +147,11 @@ function triggerUpdate(forceRecalc) {
     }
     const token = tokens[0];
 
+    if (!isValidActor(token)) {
+        clearOverlay();
+        return;
+    }
+
     const settings = getVisualSettings();
     if (!settings.enabled) {
         clearOverlay();
@@ -169,10 +188,18 @@ function triggerUpdate(forceRecalc) {
         return;
     }
 
+    const startTime = performance.now();
+
     // Calculate (Square or Hex)
     const dataToRender = calculateReachableSquares(token, paces, anchor);
 
     _cachedData.result = dataToRender;
 
     drawOverlay(token, dataToRender, "grid", anchor);
+
+    // --- END TIMER ---
+    const endTime = performance.now();
+    console.log(
+        `RMU MRF | Pathfinding & Render took ${(endTime - startTime).toFixed(2)} ms`,
+    );
 }
