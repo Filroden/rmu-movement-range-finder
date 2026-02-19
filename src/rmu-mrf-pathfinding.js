@@ -4,8 +4,8 @@
  * 1. Square: Uses Dijkstra with STRICT center checks.
  * 2. Hex: Uses Dijkstra with Jump/Bridge logic.
  *
- * CRITICAL FIX: "Safety Priority"
- * We now overwrite a "Ghost" (Unsafe) path with a "Real" (Safe) path,
+ * "Safety Priority"
+ * We overwrite a "Ghost" (Unsafe) path with a "Real" (Safe) path,
  * even if the real path is longer. This prevents wall-jumps from blocking
  * legitimate corridor traversal.
  */
@@ -49,6 +49,9 @@ export function calculateReachableSquares(
         ? { x: startX + tw / 2, y: startY + th / 2 }
         : token.center;
 
+    // OPTIMISATION: Cache expensive quadtree wall checks globally for this run
+    const wallCheckCache = new Map();
+
     // --- ROUTING ---
     if (isHex) {
         return _calculateHex(
@@ -60,6 +63,7 @@ export function calculateReachableSquares(
             startY,
             tw,
             th,
+            wallCheckCache,
         );
     } else {
         return _calculateSquare(
@@ -71,6 +75,7 @@ export function calculateReachableSquares(
             startY,
             tw,
             th,
+            wallCheckCache,
         );
     }
 }
@@ -87,9 +92,11 @@ function _calculateSquare(
     startY,
     tw,
     th,
+    wallCheckCache,
 ) {
     const minCosts = new Map();
-    const queue = [];
+    // OPTIMISATION: Use a MinHeap Priority Queue instead of a flat array
+    const queue = new MinHeap();
     const safetyMap = new Map();
 
     // Define "Safe Zone"
@@ -107,7 +114,7 @@ function _calculateSquare(
     const minJ = Math.min(c1.j, c2.j) - padding;
     const maxJ = Math.max(c1.j, c2.j) + padding;
 
-    // 1. Initialize Start
+    // 1. Initialise Start
     for (let i = minI; i <= maxI; i++) {
         for (let j = minJ; j <= maxJ; j++) {
             const center = grid.getCenterPoint({ i, j });
@@ -139,10 +146,22 @@ function _calculateSquare(
     const maxDistance = Math.max(...scaledPaces.map((p) => p.distance));
     const searchLimit = maxDistance + costPerGridUnit;
 
+    // OPTIMISATION: Pull static fallback array outside the loop
+    const fallbackNeighbors = [
+        { di: -1, dj: 0, isDiag: false },
+        { di: 1, dj: 0, isDiag: false },
+        { di: 0, dj: -1, isDiag: false },
+        { di: 0, dj: 1, isDiag: false },
+        { di: -1, dj: -1, isDiag: true },
+        { di: -1, dj: 1, isDiag: true },
+        { di: 1, dj: -1, isDiag: true },
+        { di: 1, dj: 1, isDiag: true },
+    ];
+
     // 2. Standard Dijkstra Loop
     while (queue.length > 0) {
-        queue.sort((a, b) => a.cost - b.cost);
-        const current = queue.shift();
+        // Pop the lowest cost node mathematically
+        const current = queue.pop();
         const currentKey = `${current.i}.${current.j}`;
 
         // Standard Dijkstra Skip
@@ -166,16 +185,7 @@ function _calculateSquare(
                         Math.abs(n.j - current.j) === 1,
                 }));
         } else {
-            neighbors = [
-                { di: -1, dj: 0 },
-                { di: 1, dj: 0 },
-                { di: 0, dj: -1 },
-                { di: 0, dj: 1 },
-                { di: -1, dj: -1, isDiag: true },
-                { di: -1, dj: 1, isDiag: true },
-                { di: 1, dj: -1, isDiag: true },
-                { di: 1, dj: 1, isDiag: true },
-            ].map((n) => ({
+            neighbors = fallbackNeighbors.map((n) => ({
                 i: current.i + n.di,
                 j: current.j + n.dj,
                 isDiag: n.isDiag,
@@ -212,7 +222,6 @@ function _calculateSquare(
             // Standard check: Is new path more expensive?
             if (oldCost !== undefined && newCost >= oldCost) {
                 // EXCEPTION: If old was Unsafe and new is Safe, allow overwrite!
-                // (Square grids don't currently use Ghost/Unsafe, but good for future proofing)
                 if (wasSafe && !isNowSafe) continue; // Downgrade? No.
                 if (wasSafe === isNowSafe) continue; // Same safety? Use cost.
             }
@@ -222,6 +231,7 @@ function _calculateSquare(
                 currentCenter,
                 neighbor.i,
                 neighbor.j,
+                wallCheckCache,
             );
 
             if (isReachable) {
@@ -254,10 +264,12 @@ function _calculateHex(
     startY,
     tw,
     th,
+    wallCheckCache,
 ) {
     const minCosts = new Map();
     const safetyMap = new Map();
-    const queue = [];
+    // OPTIMISATION: Use a MinHeap Priority Queue
+    const queue = new MinHeap();
 
     const margin = grid.size * 0.02;
     const safeLeft = startX + margin;
@@ -305,13 +317,11 @@ function _calculateHex(
     const searchLimit = maxDistance + costPerGridUnit;
 
     while (queue.length > 0) {
-        queue.sort((a, b) => a.cost - b.cost);
-        const current = queue.shift();
+        // Pop the lowest cost node
+        const current = queue.pop();
         const currentKey = `${current.i}.${current.j}`;
 
         // Standard Skip: If we found a cheaper way to get here, ignore this path.
-        // NOTE: We do NOT check safety here because the queue sort guarantees
-        // we process the cheapest path first. We handle safety logic at the PUSH moment.
         if (current.cost > minCosts.get(currentKey)) continue;
 
         const neighbors = grid.getAdjacentOffsets({
@@ -345,6 +355,7 @@ function _calculateHex(
                 currentCenter,
                 nextI,
                 nextJ,
+                wallCheckCache,
             );
 
             if (isDirectReachable) {
@@ -355,10 +366,6 @@ function _calculateHex(
                     const wasSafe = safetyMap.get(neighborKey);
                     const isNowSafe = true; // Direct path is always Safe
 
-                    // UPDATE LOGIC:
-                    // 1. If never visited, update.
-                    // 2. If new path is cheaper, update.
-                    // 3. CRITICAL: If old path was UNSAFE (Ghost) and new path is SAFE, update (even if more expensive).
                     let shouldUpdate = false;
                     if (oldCost === undefined) shouldUpdate = true;
                     else if (wasSafe === false && isNowSafe === true)
@@ -374,7 +381,6 @@ function _calculateHex(
                 }
             } else {
                 // --- 2. JUMP/BRIDGE LOGIC ---
-                // We only check jumps if direct is blocked.
                 const jumpNeighbors = grid.getAdjacentOffsets({
                     i: nextI,
                     j: nextJ,
@@ -390,6 +396,7 @@ function _calculateHex(
                         currentCenter,
                         jumpI,
                         jumpJ,
+                        wallCheckCache,
                     );
 
                     if (isJumpReachable) {
@@ -421,10 +428,8 @@ function _calculateHex(
                         }
 
                         // B. UPDATE THE BRIDGE (Ghost / Unsafe)
-                        // Note: We never overwrite a Safe bridge with a Ghost bridge.
                         const oldBridgeCost = minCosts.get(neighborKey);
                         const bridgeWasSafe = safetyMap.get(neighborKey);
-                        const bridgeIsSafe = false;
 
                         let updateBridge = false;
                         if (oldBridgeCost === undefined) updateBridge = true;
@@ -458,12 +463,19 @@ function _calculateHex(
  * Strict safety check.
  * Source: NULL to enforce pure geometry check (prevents Token Size from blocking corridors).
  */
-function checkCellStrict(token, originPoint, i, j) {
+function checkCellStrict(token, originPoint, i, j, wallCheckCache) {
     const grid = canvas.grid;
     const destCenter = grid.getCenterPoint({ i, j });
+    const cacheKey = `${i}.${j}`;
 
-    // 1. Safety Check
-    if (!isPointClearOfWalls(destCenter)) return false;
+    // OPTIMISATION: Safety Check (Cached)
+    let isClear = wallCheckCache.get(cacheKey);
+    if (isClear === undefined) {
+        isClear = isPointClearOfWalls(destCenter);
+        wallCheckCache.set(cacheKey, isClear);
+    }
+
+    if (!isClear) return false;
 
     // 2. Raycast (Pure Geometry)
     return !CONFIG.Canvas.polygonBackends.move.testCollision(
@@ -590,5 +602,54 @@ function isCostWithinPace(cost, limit, rule, gridSize) {
         case "full":
         default:
             return cost <= limit;
+    }
+}
+
+// OPTIMISATION: Binary Min-Heap Priority Queue for extremely fast routing
+class MinHeap {
+    constructor() {
+        this.data = [];
+    }
+    push(val) {
+        this.data.push(val);
+        this.bubbleUp(this.data.length - 1);
+    }
+    pop() {
+        if (this.data.length === 0) return undefined;
+        if (this.data.length === 1) return this.data.pop();
+        const top = this.data[0];
+        this.data[0] = this.data.pop();
+        this.bubbleDown(0);
+        return top;
+    }
+    get length() {
+        return this.data.length;
+    }
+    bubbleUp(index) {
+        while (index > 0) {
+            let parent = (index - 1) >>> 1;
+            if (this.data[parent].cost <= this.data[index].cost) break;
+            let tmp = this.data[parent];
+            this.data[parent] = this.data[index];
+            this.data[index] = tmp;
+            index = parent;
+        }
+    }
+    bubbleDown(index) {
+        const len = this.data.length;
+        while (true) {
+            let left = (index << 1) + 1;
+            let right = left + 1;
+            let smallest = index;
+            if (left < len && this.data[left].cost < this.data[smallest].cost)
+                smallest = left;
+            if (right < len && this.data[right].cost < this.data[smallest].cost)
+                smallest = right;
+            if (smallest === index) break;
+            let tmp = this.data[index];
+            this.data[index] = this.data[smallest];
+            this.data[smallest] = tmp;
+            index = smallest;
+        }
     }
 }

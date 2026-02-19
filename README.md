@@ -1,6 +1,6 @@
 # RMU Movement Range Finder
 
-![Latest Version](https://img.shields.io/badge/Version-1.1.0-blue)
+![Latest Version](https://img.shields.io/badge/Version-1.2.0-blue)
 ![Foundry Version](https://img.shields.io/badge/Foundry-v13-orange)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 ![System](https://img.shields.io/badge/System-RMU-blue)
@@ -35,7 +35,7 @@ It features an **"Anchor & Scout"** system that allows players to move their tok
 
 1. **Toggle Visibility:** Press **`m`** (default hotkey) to toggle the overlay on or off.
 2. **Create a new Anchor:** Select a Token and press `Control-m`(default hotkey). This will "anchor" the token's starting position.
-3. **Move:** Move your token along the path you wish to take. The overlay will remain anchored to your starting point. You will reveal new areas as your token's vision moves or as doors open, etc. Then just press `Control-m` again if you want to create a new anchor point. 
+3. **Move:** Move your token along the path you wish to take. The overlay will remain anchored to your starting point. You will reveal new areas as your token's vision moves or as doors open, etc. Then just press `Control-m` again if you want to create a new anchor point.
 
 ## Game settings
 
