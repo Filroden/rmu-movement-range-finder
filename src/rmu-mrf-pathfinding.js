@@ -1,14 +1,9 @@
 /**
- * RMU Movement Range Finder - Pathfinding (Unified Strict Safety)
+ * RMU Movement Range Finder - Pathfinding
  * ---------------------------------------------------------------
  * 1. Square: Uses Dijkstra with STRICT center checks.
  * 2. Hex: Uses Dijkstra with Jump/Bridge logic.
- * 3. Gridless (MicroGrid): Uses a synthetic 20px square grid via Dijkstra.
- *
- * "Safety Priority"
- * We overwrite a "Ghost" (Unsafe) path with a "Real" (Safe) path,
- * even if the real path is longer. This prevents wall-jumps from blocking
- * legitimate corridor traversal.
+ * 3. Gridless: Uses Theta* on a synthetic Micro-Grid for true Euclidean circles.
  */
 
 import { getRoundingMode, getGridlessResolution } from "./rmu-mrf-settings.js";
@@ -39,48 +34,28 @@ export function calculateReachableSquares(
         distance: p.distance * distanceScale,
     }));
 
-    // --- SETUP START ---
     const startX = originOverride ? originOverride.x : token.document.x;
     const startY = originOverride ? originOverride.y : token.document.y;
     const tw = token.w;
     const th = token.h;
 
-    // Define the Calculation Origin (Center)
     const centerPt = originOverride
         ? { x: startX + tw / 2, y: startY + th / 2 }
         : token.center;
 
-    // OPTIMISATION: Cache expensive quadtree wall checks globally for this run
     const wallCheckCache = new Map();
 
     // --- ROUTING ---
     if (grid.type === CONST.GRID_TYPES.GRIDLESS) {
-        // Hardcoded for now. Later: const method = getGridlessMethodSetting();
-        const method = "microgrid";
-
-        if (method === "microgrid") {
-            return _calculateGridlessMicroGrid(
-                token,
-                scaledPaces,
-                centerPt,
-                startX,
-                startY,
-                tw,
-                th,
-                wallCheckCache,
-            );
-        } else if (method === "clipper") {
-            return _calculateGridlessClipper(
-                token,
-                scaledPaces,
-                centerPt,
-                startX,
-                startY,
-                tw,
-                th,
-                wallCheckCache,
-            );
-        }
+        return _calculateGridlessTheta(
+            token,
+            scaledPaces,
+            centerPt,
+            startX,
+            startY,
+            tw,
+            th,
+        );
     } else if (isHex) {
         return _calculateHex(
             token,
@@ -109,8 +84,179 @@ export function calculateReachableSquares(
 }
 
 /**
- * ALGORITHM 1: SQUARE GRID
+ * ALGORITHM 3: GRIDLESS (Theta* Micro-Grid)
+ * Evaluates a synthetic grid but uses line-of-sight to origin to draw perfect circles.
  */
+function _calculateGridlessTheta(
+    token,
+    scaledPaces,
+    centerPt,
+    startX,
+    startY,
+    tw,
+    th,
+) {
+    const resolutionPx = getGridlessResolution();
+    const costPerGridUnit = canvas.scene.grid.distance;
+    const sizePerGridUnit = canvas.scene.grid.size;
+
+    // Generate the grid first so the helper can use it!
+    const microDistance = (resolutionPx / sizePerGridUnit) * costPerGridUnit;
+    const syntheticGrid = _createSyntheticGrid(resolutionPx, microDistance);
+
+    const minCosts = new Map();
+    const queue = new MinHeap();
+    const safetyMap = new Map();
+
+    // Call our unified helper (isTheta = true)
+    _initializeTokenFootprint(
+        queue,
+        minCosts,
+        safetyMap,
+        syntheticGrid,
+        centerPt,
+        startX,
+        startY,
+        tw,
+        th,
+        true,
+    );
+
+    const searchLimit =
+        Math.max(...scaledPaces.map((p) => p.distance)) + costPerGridUnit * 2;
+
+    const neighborsOffsets = [
+        { di: -1, dj: 0 },
+        { di: 1, dj: 0 },
+        { di: 0, dj: -1 },
+        { di: 0, dj: 1 },
+        { di: -1, dj: -1 },
+        { di: -1, dj: 1 },
+        { di: 1, dj: -1 },
+        { di: 1, dj: 1 },
+    ];
+
+    while (queue.length > 0) {
+        const current = queue.pop();
+        const currentKey = `${current.i}.${current.j}`;
+
+        if (current.cost > minCosts.get(currentKey)) continue;
+
+        const currentCenter = {
+            x: current.i * resolutionPx + resolutionPx / 2,
+            y: current.j * resolutionPx + resolutionPx / 2,
+        };
+
+        for (const n of neighborsOffsets) {
+            const nextI = current.i + n.di;
+            const nextJ = current.j + n.dj;
+            const neighborKey = `${nextI}.${nextJ}`;
+            const neighborCenter = {
+                x: nextI * resolutionPx + resolutionPx / 2,
+                y: nextJ * resolutionPx + resolutionPx / 2,
+            };
+
+            if (
+                !canvas.dimensions.sceneRect.contains(
+                    neighborCenter.x,
+                    neighborCenter.y,
+                )
+            )
+                continue;
+
+            let newCost;
+            let nextLosOrigin;
+
+            // 1. THETA* LOGIC: Try Line of Sight back to the active "Anchor"
+            const hasLOS = !CONFIG.Canvas.polygonBackends.move.testCollision(
+                current.losOrigin,
+                neighborCenter,
+                { type: "move", mode: "any" },
+            );
+
+            if (hasLOS) {
+                // Perfect Euclidean distance from the anchor! (Draws circles, not octagons)
+                const distPx = Math.hypot(
+                    neighborCenter.x - current.losOrigin.x,
+                    neighborCenter.y - current.losOrigin.y,
+                );
+                const distUnits = (distPx / sizePerGridUnit) * costPerGridUnit;
+                newCost = current.losOrigin.cost + distUnits;
+                nextLosOrigin = current.losOrigin;
+            } else {
+                // 2. Blocked by a corner! Fallback to adjacent micro-step and drop a new anchor
+                const hasAdjacentLOS =
+                    !CONFIG.Canvas.polygonBackends.move.testCollision(
+                        currentCenter,
+                        neighborCenter,
+                        { type: "move", mode: "any" },
+                    );
+                if (!hasAdjacentLOS) continue; // Wall blocking the adjacent cells
+
+                const stepPx = Math.hypot(
+                    neighborCenter.x - currentCenter.x,
+                    neighborCenter.y - currentCenter.y,
+                );
+                const stepUnits = (stepPx / sizePerGridUnit) * costPerGridUnit;
+                newCost = current.cost + stepUnits;
+
+                // Drop a new anchor at this corner
+                nextLosOrigin = {
+                    x: currentCenter.x,
+                    y: currentCenter.y,
+                    cost: current.cost,
+                };
+            }
+
+            if (newCost > searchLimit) continue;
+
+            const oldCost = minCosts.get(neighborKey);
+            if (oldCost === undefined || newCost < oldCost) {
+                minCosts.set(neighborKey, newCost);
+                safetyMap.set(neighborKey, true);
+                queue.push({
+                    i: nextI,
+                    j: nextJ,
+                    cost: newCost,
+                    losOrigin: nextLosOrigin,
+                });
+            }
+        }
+    }
+
+    return processResults(
+        minCosts,
+        safetyMap,
+        scaledPaces,
+        syntheticGrid,
+        costPerGridUnit,
+    );
+}
+
+function _createSyntheticGrid(resolutionPx, distancePerCell) {
+    return {
+        type: CONST.GRID_TYPES.SQUARE,
+        size: resolutionPx,
+        distance: distancePerCell,
+        getOffset: (pt) => ({
+            i: Math.floor(pt.x / resolutionPx),
+            j: Math.floor(pt.y / resolutionPx),
+        }),
+        getCenterPoint: (coord) => ({
+            x: coord.i * resolutionPx + resolutionPx / 2,
+            y: coord.j * resolutionPx + resolutionPx / 2,
+        }),
+        getTopLeftPoint: (coord) => ({
+            x: coord.i * resolutionPx,
+            y: coord.j * resolutionPx,
+        }),
+    };
+}
+
+// ----------------------------------------------------------------------
+// SQUARE & HEX LEGACY ALGORITHMS
+// ----------------------------------------------------------------------
+
 function _calculateSquare(
     token,
     scaledPaces,
@@ -126,46 +272,18 @@ function _calculateSquare(
     const queue = new MinHeap();
     const safetyMap = new Map();
 
-    const margin = grid.size * 0.02;
-    const safeLeft = startX + margin;
-    const safeRight = startX + tw - margin;
-    const safeTop = startY + margin;
-    const safeBottom = startY + th - margin;
-
-    const c1 = grid.getOffset({ x: startX, y: startY });
-    const c2 = grid.getOffset({ x: startX + tw, y: startY + th });
-    const padding = 1;
-    const minI = Math.min(c1.i, c2.i) - padding;
-    const maxI = Math.max(c1.i, c2.i) + padding;
-    const minJ = Math.min(c1.j, c2.j) - padding;
-    const maxJ = Math.max(c1.j, c2.j) + padding;
-
-    for (let i = minI; i <= maxI; i++) {
-        for (let j = minJ; j <= maxJ; j++) {
-            const center = grid.getCenterPoint({ i, j });
-            if (
-                center.x >= safeLeft &&
-                center.x <= safeRight &&
-                center.y >= safeTop &&
-                center.y <= safeBottom
-            ) {
-                const key = `${i}.${j}`;
-                if (!minCosts.has(key)) {
-                    minCosts.set(key, 0);
-                    safetyMap.set(key, true);
-                    queue.push({ i, j, cost: 0 });
-                }
-            }
-        }
-    }
-
-    if (queue.length === 0) {
-        const centerOffset = grid.getOffset(centerPt);
-        const key = `${centerOffset.i}.${centerOffset.j}`;
-        minCosts.set(key, 0);
-        safetyMap.set(key, true);
-        queue.push({ i: centerOffset.i, j: centerOffset.j, cost: 0 });
-    }
+    _initializeTokenFootprint(
+        queue,
+        minCosts,
+        safetyMap,
+        grid,
+        centerPt,
+        startX,
+        startY,
+        tw,
+        th,
+        false,
+    );
 
     const costPerGridUnit = Number(grid.distance);
     const maxDistance = Math.max(...scaledPaces.map((p) => p.distance));
@@ -246,8 +364,8 @@ function _calculateSquare(
             const isReachable = checkCellStrict(
                 token,
                 currentCenter,
-                neighborCenter, // UPDATED: Decoupled coordinate
-                neighborKey, // UPDATED: Decoupled cache key
+                neighborCenter,
+                neighborKey,
                 wallCheckCache,
             );
 
@@ -268,9 +386,6 @@ function _calculateSquare(
     );
 }
 
-/**
- * ALGORITHM 2: HEX GRID
- */
 function _calculateHex(
     token,
     scaledPaces,
@@ -286,46 +401,18 @@ function _calculateHex(
     const safetyMap = new Map();
     const queue = new MinHeap();
 
-    const margin = grid.size * 0.02;
-    const safeLeft = startX + margin;
-    const safeRight = startX + tw - margin;
-    const safeTop = startY + margin;
-    const safeBottom = startY + th - margin;
-
-    const c1 = grid.getOffset({ x: startX, y: startY });
-    const c2 = grid.getOffset({ x: startX + tw, y: startY + th });
-    const padding = 1;
-    const minI = Math.min(c1.i, c2.i) - padding;
-    const maxI = Math.max(c1.i, c2.i) + padding;
-    const minJ = Math.min(c1.j, c2.j) - padding;
-    const maxJ = Math.max(c1.j, c2.j) + padding;
-
-    for (let i = minI; i <= maxI; i++) {
-        for (let j = minJ; j <= maxJ; j++) {
-            const center = grid.getCenterPoint({ i, j });
-            if (
-                center.x >= safeLeft &&
-                center.x <= safeRight &&
-                center.y >= safeTop &&
-                center.y <= safeBottom
-            ) {
-                const key = `${i}.${j}`;
-                if (!minCosts.has(key)) {
-                    minCosts.set(key, 0);
-                    safetyMap.set(key, true);
-                    queue.push({ i, j, cost: 0 });
-                }
-            }
-        }
-    }
-
-    if (queue.length === 0) {
-        const centerOffset = grid.getOffset(centerPt);
-        const key = `${centerOffset.i}.${centerOffset.j}`;
-        minCosts.set(key, 0);
-        safetyMap.set(key, true);
-        queue.push({ i: centerOffset.i, j: centerOffset.j, cost: 0 });
-    }
+    _initializeTokenFootprint(
+        queue,
+        minCosts,
+        safetyMap,
+        grid,
+        centerPt,
+        startX,
+        startY,
+        tw,
+        th,
+        false,
+    );
 
     const costPerGridUnit = Number(grid.distance);
     const maxDistance = Math.max(...scaledPaces.map((p) => p.distance));
@@ -365,8 +452,8 @@ function _calculateHex(
             const isDirectReachable = checkCellStrict(
                 token,
                 currentCenter,
-                neighborCenter, // UPDATED
-                neighborKey, // UPDATED
+                neighborCenter,
+                neighborKey,
                 wallCheckCache,
             );
 
@@ -406,13 +493,13 @@ function _calculateHex(
                     const jumpCenter = grid.getCenterPoint({
                         i: jumpI,
                         j: jumpJ,
-                    }); // ADDED
+                    });
 
                     const isJumpReachable = checkCellStrict(
                         token,
                         currentCenter,
-                        jumpCenter, // UPDATED
-                        jumpKey, // UPDATED
+                        jumpCenter,
+                        jumpKey,
                         wallCheckCache,
                     );
 
@@ -469,91 +556,8 @@ function _calculateHex(
     );
 }
 
-/**
- * ALGORITHM 3: GRIDLESS (Micro-Grid / Option 1)
- */
-function _calculateGridlessMicroGrid(
-    token,
-    scaledPaces,
-    centerPt,
-    startX,
-    startY,
-    tw,
-    th,
-    wallCheckCache,
-) {
-    // 1. Fetch resolution from settings (defaults to 20 if untouched)
-    const resolutionPx = getGridlessResolution();
-
-    // Calculate the distance cost of one micro-cell
-    const sceneDistancePerPixel =
-        canvas.scene.grid.distance / canvas.scene.grid.size;
-    const microDistance = sceneDistancePerPixel * resolutionPx;
-
-    // 2. Build the Mock Grid
-    const syntheticGrid = _createSyntheticGrid(resolutionPx, microDistance);
-
-    // 3. Run the exact same Dijkstra square algorithm, but feed it the fake grid!
-    return _calculateSquare(
-        token,
-        scaledPaces,
-        syntheticGrid,
-        centerPt,
-        startX,
-        startY,
-        tw,
-        th,
-        wallCheckCache,
-    );
-}
-
-/**
- * Creates a mocked Grid object that matches Foundry's API so Dijkstra doesn't crash.
- */
-function _createSyntheticGrid(resolutionPx, distancePerCell) {
-    return {
-        type: CONST.GRID_TYPES.SQUARE,
-        size: resolutionPx,
-        distance: distancePerCell,
-        // Mock API methods expected by _calculateSquare and processResults
-        getOffset: (pt) => ({
-            i: Math.floor(pt.x / resolutionPx),
-            j: Math.floor(pt.y / resolutionPx),
-        }),
-        getCenterPoint: (coord) => ({
-            x: coord.i * resolutionPx + resolutionPx / 2,
-            y: coord.j * resolutionPx + resolutionPx / 2,
-        }),
-        getTopLeftPoint: (coord) => ({
-            x: coord.i * resolutionPx,
-            y: coord.j * resolutionPx,
-        }),
-        // Note: We omit getAdjacentOffsets so _calculateSquare uses your fallback array!
-    };
-}
-
-/**
- * ALGORITHM 4: GRIDLESS (Clipper Union / Option 3 - PLACEHOLDER)
- */
-function _calculateGridlessClipper(
-    token,
-    scaledPaces,
-    centerPt,
-    startX,
-    startY,
-    tw,
-    th,
-    wallCheckCache,
-) {
-    ui.notifications.warn("Clipper method not yet implemented.");
-    return new Map();
-}
-
 // --- HELPERS ---
 
-/**
- * Strict safety check. Now completely grid-agnostic!
- */
 function checkCellStrict(
     token,
     originPoint,
@@ -561,51 +565,19 @@ function checkCellStrict(
     cacheKey,
     wallCheckCache,
 ) {
-    // OPTIMISATION: Safety Check (Cached)
     let isClear = wallCheckCache.get(cacheKey);
     if (isClear === undefined) {
-        isClear = isPointClearOfWalls(destCenter);
+        // We removed the 2px bounding box tolerance check here that was artificially snagging on doors!
+        isClear = true;
         wallCheckCache.set(cacheKey, isClear);
     }
-
     if (!isClear) return false;
 
-    // 2. Raycast (Pure Geometry)
     return !CONFIG.Canvas.polygonBackends.move.testCollision(
         originPoint,
         destCenter,
         { type: "move", mode: "any", source: null },
     );
-}
-
-function isPointClearOfWalls(point) {
-    if (canvas.walls && canvas.walls.quadtree) {
-        const tolerance = 2;
-        const bounds = new PIXI.Rectangle(
-            point.x - tolerance,
-            point.y - tolerance,
-            tolerance * 2,
-            tolerance * 2,
-        );
-        const walls = canvas.walls.quadtree.getObjects(bounds);
-        for (const wall of walls) {
-            if (wall.document.move === CONST.WALL_SENSE_TYPES.NONE) continue;
-            const A = wall.edge?.a ?? wall.A;
-            const B = wall.edge?.b ?? wall.B;
-            const dist = _distToSegment(point, A, B);
-            if (dist < tolerance) return false;
-        }
-    }
-    return true;
-}
-
-function _distToSegment(p, v, w) {
-    const l2 = (w.x - v.x) ** 2 + (w.y - v.y) ** 2;
-    if (l2 === 0) return Math.hypot(p.x - v.x, p.y - v.y);
-    let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
-    t = Math.max(0, Math.min(1, t));
-    const projection = { x: v.x + t * (w.x - v.x), y: v.y + t * (w.y - v.y) };
-    return Math.hypot(p.x - projection.x, p.y - projection.y);
 }
 
 function processResults(
@@ -625,7 +597,6 @@ function processResults(
         scaledPaces.find((p) => p.isActionLimit) ||
         scaledPaces.find((p) => p.name === "Sprint") ||
         (sortedPaces.length > 1 ? sortedPaces[1] : sortedPaces[0]);
-
     const limitDistance = limitPace ? limitPace.distance : 0;
     const limitColor = limitPace ? limitPace.color : "#FFFFFF";
 
@@ -656,7 +627,6 @@ function processResults(
                 roundingRule,
                 costPerGridUnit,
             );
-
             const isSafe = safetyMap.get(key) === true;
 
             resultSquares.set(
@@ -698,7 +668,6 @@ function isCostWithinPace(cost, limit, rule, gridSize) {
     }
 }
 
-// OPTIMISATION: Binary Min-Heap Priority Queue for extremely fast routing
 class MinHeap {
     constructor() {
         this.data = [];
@@ -743,6 +712,95 @@ class MinHeap {
             this.data[index] = this.data[smallest];
             this.data[smallest] = tmp;
             index = smallest;
+        }
+    }
+}
+
+/**
+ * Unifies the initial token footprint calculation across all 3 grid modes.
+ * Prevents wall leaks and handles Tiny tokens that don't fill a whole square.
+ */
+function _initializeTokenFootprint(
+    queue,
+    minCosts,
+    safetyMap,
+    grid,
+    centerPt,
+    startX,
+    startY,
+    tw,
+    th,
+    isTheta = false,
+) {
+    const margin = grid.size * 0.02;
+    const safeLeft = startX + margin;
+    const safeRight = startX + tw - margin;
+    const safeTop = startY + margin;
+    const safeBottom = startY + th - margin;
+
+    const c1 = grid.getOffset({ x: startX, y: startY });
+    const c2 = grid.getOffset({ x: startX + tw, y: startY + th });
+    const padding = 1;
+    const minI = Math.min(c1.i, c2.i) - padding;
+    const maxI = Math.max(c1.i, c2.i) + padding;
+    const minJ = Math.min(c1.j, c2.j) - padding;
+    const maxJ = Math.max(c1.j, c2.j) + padding;
+
+    const startOrigin = { x: centerPt.x, y: centerPt.y, cost: 0 };
+
+    for (let i = minI; i <= maxI; i++) {
+        for (let j = minJ; j <= maxJ; j++) {
+            const center = grid.getCenterPoint({ i, j });
+            if (
+                center.x >= safeLeft &&
+                center.x <= safeRight &&
+                center.y >= safeTop &&
+                center.y <= safeBottom
+            ) {
+                const isVisible =
+                    !CONFIG.Canvas.polygonBackends.move.testCollision(
+                        centerPt,
+                        center,
+                        { type: "move", mode: "any" },
+                    );
+
+                if (isVisible) {
+                    const key = `${i}.${j}`;
+                    if (!minCosts.has(key)) {
+                        minCosts.set(key, 0);
+                        safetyMap.set(key, true);
+                        if (isTheta) {
+                            queue.push({
+                                i,
+                                j,
+                                cost: 0,
+                                losOrigin: startOrigin,
+                            });
+                        } else {
+                            queue.push({ i, j, cost: 0 });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback: If token is so small it doesn't encompass any grid centers (e.g. Tiny),
+    // force its current occupied cell as the starting point.
+    if (queue.length === 0) {
+        const centerOffset = grid.getOffset(centerPt);
+        const key = `${centerOffset.i}.${centerOffset.j}`;
+        minCosts.set(key, 0);
+        safetyMap.set(key, true);
+        if (isTheta) {
+            queue.push({
+                i: centerOffset.i,
+                j: centerOffset.j,
+                cost: 0,
+                losOrigin: startOrigin,
+            });
+        } else {
+            queue.push({ i: centerOffset.i, j: centerOffset.j, cost: 0 });
         }
     }
 }
