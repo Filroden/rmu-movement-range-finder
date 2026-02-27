@@ -158,15 +158,6 @@ function triggerUpdate(forceRecalc) {
         return;
     }
 
-    // --- GRID SUPPORT GATES ---
-    const gridType = canvas.grid.type;
-
-    if (gridType === CONST.GRID_TYPES.GRIDLESS) {
-        // Gridless is unsupported in v1.1. Fail silently/cleanly.
-        clearOverlay();
-        return;
-    }
-
     const paces = getMovementPaces(token);
     if (!paces || paces.length === 0) return;
 
@@ -190,7 +181,7 @@ function triggerUpdate(forceRecalc) {
 
     const startTime = performance.now();
 
-    // Calculate (Square or Hex)
+    // Calculate (Square, Hex, or Synthetic Gridless)
     const dataToRender = calculateReachableSquares(token, paces, anchor);
 
     _cachedData.result = dataToRender;

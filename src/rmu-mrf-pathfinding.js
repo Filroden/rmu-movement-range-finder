@@ -3,6 +3,7 @@
  * ---------------------------------------------------------------
  * 1. Square: Uses Dijkstra with STRICT center checks.
  * 2. Hex: Uses Dijkstra with Jump/Bridge logic.
+ * 3. Gridless (MicroGrid): Uses a synthetic 20px square grid via Dijkstra.
  *
  * "Safety Priority"
  * We overwrite a "Ghost" (Unsafe) path with a "Real" (Safe) path,
@@ -10,7 +11,7 @@
  * legitimate corridor traversal.
  */
 
-import { getRoundingMode } from "./rmu-mrf-settings.js";
+import { getRoundingMode, getGridlessResolution } from "./rmu-mrf-settings.js";
 
 const METRIC_UNITS = ["m", "m.", "meter", "meters", "metre", "metres"];
 const FT_PER_METER = 3.33333;
@@ -24,9 +25,9 @@ export function calculateReachableSquares(
         return new Map();
 
     const grid = canvas.grid;
-    if (grid.type === CONST.GRID_TYPES.GRIDLESS) return new Map();
-
-    const isHex = grid.type !== CONST.GRID_TYPES.SQUARE;
+    const isHex =
+        grid.type !== CONST.GRID_TYPES.SQUARE &&
+        grid.type !== CONST.GRID_TYPES.GRIDLESS;
 
     // Metric Scaling
     const units = canvas.scene.grid.units?.toLowerCase();
@@ -53,7 +54,34 @@ export function calculateReachableSquares(
     const wallCheckCache = new Map();
 
     // --- ROUTING ---
-    if (isHex) {
+    if (grid.type === CONST.GRID_TYPES.GRIDLESS) {
+        // Hardcoded for now. Later: const method = getGridlessMethodSetting();
+        const method = "microgrid";
+
+        if (method === "microgrid") {
+            return _calculateGridlessMicroGrid(
+                token,
+                scaledPaces,
+                centerPt,
+                startX,
+                startY,
+                tw,
+                th,
+                wallCheckCache,
+            );
+        } else if (method === "clipper") {
+            return _calculateGridlessClipper(
+                token,
+                scaledPaces,
+                centerPt,
+                startX,
+                startY,
+                tw,
+                th,
+                wallCheckCache,
+            );
+        }
+    } else if (isHex) {
         return _calculateHex(
             token,
             scaledPaces,
@@ -95,11 +123,9 @@ function _calculateSquare(
     wallCheckCache,
 ) {
     const minCosts = new Map();
-    // OPTIMISATION: Use a MinHeap Priority Queue instead of a flat array
     const queue = new MinHeap();
     const safetyMap = new Map();
 
-    // Define "Safe Zone"
     const margin = grid.size * 0.02;
     const safeLeft = startX + margin;
     const safeRight = startX + tw - margin;
@@ -114,7 +140,6 @@ function _calculateSquare(
     const minJ = Math.min(c1.j, c2.j) - padding;
     const maxJ = Math.max(c1.j, c2.j) + padding;
 
-    // 1. Initialise Start
     for (let i = minI; i <= maxI; i++) {
         for (let j = minJ; j <= maxJ; j++) {
             const center = grid.getCenterPoint({ i, j });
@@ -146,7 +171,6 @@ function _calculateSquare(
     const maxDistance = Math.max(...scaledPaces.map((p) => p.distance));
     const searchLimit = maxDistance + costPerGridUnit;
 
-    // OPTIMISATION: Pull static fallback array outside the loop
     const fallbackNeighbors = [
         { di: -1, dj: 0, isDiag: false },
         { di: 1, dj: 0, isDiag: false },
@@ -158,13 +182,10 @@ function _calculateSquare(
         { di: 1, dj: 1, isDiag: true },
     ];
 
-    // 2. Standard Dijkstra Loop
     while (queue.length > 0) {
-        // Pop the lowest cost node mathematically
         const current = queue.pop();
         const currentKey = `${current.i}.${current.j}`;
 
-        // Standard Dijkstra Skip
         if (current.cost > minCosts.get(currentKey)) continue;
 
         const currentCenter = grid.getCenterPoint({
@@ -172,7 +193,6 @@ function _calculateSquare(
             j: current.j,
         });
 
-        // Get Neighbors
         let neighbors = [];
         if (grid.getAdjacentOffsets) {
             neighbors = grid
@@ -214,23 +234,20 @@ function _calculateSquare(
             const newCost = current.cost + stepDist;
             if (newCost > searchLimit) continue;
 
-            // --- SAFETY PRIORITY CHECK ---
             const oldCost = minCosts.get(neighborKey);
             const wasSafe = safetyMap.get(neighborKey);
-            const isNowSafe = true; // Squares are always "Safe" if reachable
+            const isNowSafe = true;
 
-            // Standard check: Is new path more expensive?
             if (oldCost !== undefined && newCost >= oldCost) {
-                // EXCEPTION: If old was Unsafe and new is Safe, allow overwrite!
-                if (wasSafe && !isNowSafe) continue; // Downgrade? No.
-                if (wasSafe === isNowSafe) continue; // Same safety? Use cost.
+                if (wasSafe && !isNowSafe) continue;
+                if (wasSafe === isNowSafe) continue;
             }
 
             const isReachable = checkCellStrict(
                 token,
                 currentCenter,
-                neighbor.i,
-                neighbor.j,
+                neighborCenter, // UPDATED: Decoupled coordinate
+                neighborKey, // UPDATED: Decoupled cache key
                 wallCheckCache,
             );
 
@@ -253,7 +270,6 @@ function _calculateSquare(
 
 /**
  * ALGORITHM 2: HEX GRID
- * Includes Safety Priority Logic to fix "Ghost Blocking".
  */
 function _calculateHex(
     token,
@@ -268,7 +284,6 @@ function _calculateHex(
 ) {
     const minCosts = new Map();
     const safetyMap = new Map();
-    // OPTIMISATION: Use a MinHeap Priority Queue
     const queue = new MinHeap();
 
     const margin = grid.size * 0.02;
@@ -317,11 +332,9 @@ function _calculateHex(
     const searchLimit = maxDistance + costPerGridUnit;
 
     while (queue.length > 0) {
-        // Pop the lowest cost node
         const current = queue.pop();
         const currentKey = `${current.i}.${current.j}`;
 
-        // Standard Skip: If we found a cheaper way to get here, ignore this path.
         if (current.cost > minCosts.get(currentKey)) continue;
 
         const neighbors = grid.getAdjacentOffsets({
@@ -349,12 +362,11 @@ function _calculateHex(
 
             let stepDist = costPerGridUnit;
 
-            // --- 1. DIRECT PATH (Adjacent) ---
             const isDirectReachable = checkCellStrict(
                 token,
                 currentCenter,
-                nextI,
-                nextJ,
+                neighborCenter, // UPDATED
+                neighborKey, // UPDATED
                 wallCheckCache,
             );
 
@@ -364,14 +376,14 @@ function _calculateHex(
                 if (newCost <= searchLimit) {
                     const oldCost = minCosts.get(neighborKey);
                     const wasSafe = safetyMap.get(neighborKey);
-                    const isNowSafe = true; // Direct path is always Safe
+                    const isNowSafe = true;
 
                     let shouldUpdate = false;
                     if (oldCost === undefined) shouldUpdate = true;
                     else if (wasSafe === false && isNowSafe === true)
-                        shouldUpdate = true; // Upgrade to Safe!
+                        shouldUpdate = true;
                     else if (newCost < oldCost && wasSafe === isNowSafe)
-                        shouldUpdate = true; // Cheaper same-tier path
+                        shouldUpdate = true;
 
                     if (shouldUpdate) {
                         minCosts.set(neighborKey, newCost);
@@ -380,7 +392,6 @@ function _calculateHex(
                     }
                 }
             } else {
-                // --- 2. JUMP/BRIDGE LOGIC ---
                 const jumpNeighbors = grid.getAdjacentOffsets({
                     i: nextI,
                     j: nextJ,
@@ -391,11 +402,17 @@ function _calculateHex(
                     const jumpJ = jn.j;
                     if (jumpI === current.i && jumpJ === current.j) continue;
 
+                    const jumpKey = `${jumpI}.${jumpJ}`;
+                    const jumpCenter = grid.getCenterPoint({
+                        i: jumpI,
+                        j: jumpJ,
+                    }); // ADDED
+
                     const isJumpReachable = checkCellStrict(
                         token,
                         currentCenter,
-                        jumpI,
-                        jumpJ,
+                        jumpCenter, // UPDATED
+                        jumpKey, // UPDATED
                         wallCheckCache,
                     );
 
@@ -403,10 +420,7 @@ function _calculateHex(
                         const jumpCost = current.cost + stepDist * 2;
                         if (jumpCost > searchLimit) continue;
 
-                        const jumpKey = `${jumpI}.${jumpJ}`;
                         const bridgeCost = current.cost + stepDist;
-
-                        // A. UPDATE THE JUMP TARGET (Safe)
                         const oldJumpCost = minCosts.get(jumpKey);
                         const jumpWasSafe = safetyMap.get(jumpKey);
                         const jumpIsSafe = true;
@@ -427,20 +441,18 @@ function _calculateHex(
                             queue.push({ i: jumpI, j: jumpJ, cost: jumpCost });
                         }
 
-                        // B. UPDATE THE BRIDGE (Ghost / Unsafe)
                         const oldBridgeCost = minCosts.get(neighborKey);
                         const bridgeWasSafe = safetyMap.get(neighborKey);
 
                         let updateBridge = false;
                         if (oldBridgeCost === undefined) updateBridge = true;
-                        else if (bridgeWasSafe === true)
-                            updateBridge = false; // Never downgrade a Safe node
+                        else if (bridgeWasSafe === true) updateBridge = false;
                         else if (bridgeCost < oldBridgeCost)
-                            updateBridge = true; // Cheaper Ghost path
+                            updateBridge = true;
 
                         if (updateBridge) {
                             minCosts.set(neighborKey, bridgeCost);
-                            safetyMap.set(neighborKey, false); // Mark as Ghost
+                            safetyMap.set(neighborKey, false);
                         }
                     }
                 }
@@ -457,17 +469,98 @@ function _calculateHex(
     );
 }
 
+/**
+ * ALGORITHM 3: GRIDLESS (Micro-Grid / Option 1)
+ */
+function _calculateGridlessMicroGrid(
+    token,
+    scaledPaces,
+    centerPt,
+    startX,
+    startY,
+    tw,
+    th,
+    wallCheckCache,
+) {
+    // 1. Fetch resolution from settings (defaults to 20 if untouched)
+    const resolutionPx = getGridlessResolution();
+
+    // Calculate the distance cost of one micro-cell
+    const sceneDistancePerPixel =
+        canvas.scene.grid.distance / canvas.scene.grid.size;
+    const microDistance = sceneDistancePerPixel * resolutionPx;
+
+    // 2. Build the Mock Grid
+    const syntheticGrid = _createSyntheticGrid(resolutionPx, microDistance);
+
+    // 3. Run the exact same Dijkstra square algorithm, but feed it the fake grid!
+    return _calculateSquare(
+        token,
+        scaledPaces,
+        syntheticGrid,
+        centerPt,
+        startX,
+        startY,
+        tw,
+        th,
+        wallCheckCache,
+    );
+}
+
+/**
+ * Creates a mocked Grid object that matches Foundry's API so Dijkstra doesn't crash.
+ */
+function _createSyntheticGrid(resolutionPx, distancePerCell) {
+    return {
+        type: CONST.GRID_TYPES.SQUARE,
+        size: resolutionPx,
+        distance: distancePerCell,
+        // Mock API methods expected by _calculateSquare and processResults
+        getOffset: (pt) => ({
+            i: Math.floor(pt.x / resolutionPx),
+            j: Math.floor(pt.y / resolutionPx),
+        }),
+        getCenterPoint: (coord) => ({
+            x: coord.i * resolutionPx + resolutionPx / 2,
+            y: coord.j * resolutionPx + resolutionPx / 2,
+        }),
+        getTopLeftPoint: (coord) => ({
+            x: coord.i * resolutionPx,
+            y: coord.j * resolutionPx,
+        }),
+        // Note: We omit getAdjacentOffsets so _calculateSquare uses your fallback array!
+    };
+}
+
+/**
+ * ALGORITHM 4: GRIDLESS (Clipper Union / Option 3 - PLACEHOLDER)
+ */
+function _calculateGridlessClipper(
+    token,
+    scaledPaces,
+    centerPt,
+    startX,
+    startY,
+    tw,
+    th,
+    wallCheckCache,
+) {
+    ui.notifications.warn("Clipper method not yet implemented.");
+    return new Map();
+}
+
 // --- HELPERS ---
 
 /**
- * Strict safety check.
- * Source: NULL to enforce pure geometry check (prevents Token Size from blocking corridors).
+ * Strict safety check. Now completely grid-agnostic!
  */
-function checkCellStrict(token, originPoint, i, j, wallCheckCache) {
-    const grid = canvas.grid;
-    const destCenter = grid.getCenterPoint({ i, j });
-    const cacheKey = `${i}.${j}`;
-
+function checkCellStrict(
+    token,
+    originPoint,
+    destCenter,
+    cacheKey,
+    wallCheckCache,
+) {
     // OPTIMISATION: Safety Check (Cached)
     let isClear = wallCheckCache.get(cacheKey);
     if (isClear === undefined) {

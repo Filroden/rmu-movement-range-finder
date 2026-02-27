@@ -63,6 +63,9 @@ function _drawGridHighlight(token, squareMap, settings) {
     const isPlayerToken = token.document.hasPlayerOwner;
     const shouldEnforceFog = !game.user.isGM || isPlayerToken;
 
+    // Check if we are faking a micro-grid on a gridless map
+    const isGridless = canvas.grid.type === CONST.GRID_TYPES.GRIDLESS;
+
     // --- PASS 1: DRAW CELLS (Fill & Text) ---
     for (const [key, square] of squareMap) {
         const isHex = square.gridType !== CONST.GRID_TYPES.SQUARE;
@@ -110,7 +113,13 @@ function _drawGridHighlight(token, squareMap, settings) {
             : settings.opacity * 0.4;
 
         graphics.beginFill(square.colorInt, drawOpacity);
-        graphics.lineStyle(1, 0x000000, 0.3);
+
+        // HIDE INTERIOR BORDERS ON GRIDLESS
+        if (isGridless) {
+            graphics.lineStyle(0);
+        } else {
+            graphics.lineStyle(1, 0x000000, 0.3);
+        }
 
         if (isHex) {
             // CACHE: Hex Vertices
@@ -134,7 +143,8 @@ function _drawGridHighlight(token, squareMap, settings) {
         graphics.endFill();
 
         // CACHE: Create PIXI.Text exactly ONCE and reuse it
-        if (settings.showLabels && square.isSafe) {
+        // HIDE LABELS ON GRIDLESS
+        if (settings.showLabels && square.isSafe && !isGridless) {
             if (!square.textObj || square.textObj.destroyed) {
                 const dist = parseFloat(square.cost.toFixed(1));
                 const labelText = `${dist} ${gridUnit}`;
