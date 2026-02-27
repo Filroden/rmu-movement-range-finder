@@ -175,12 +175,23 @@ function _calculateGridlessTheta(
             );
 
             if (hasLOS) {
-                // Perfect Euclidean distance from the anchor! (Draws circles, not octagons)
+                // Perfect Euclidean distance from the anchor.
                 const distPx = Math.hypot(
                     neighborCenter.x - current.losOrigin.x,
                     neighborCenter.y - current.losOrigin.y,
                 );
-                const distUnits = (distPx / sizePerGridUnit) * costPerGridUnit;
+                let distUnits = (distPx / sizePerGridUnit) * costPerGridUnit;
+
+                // If measuring from the token's original center, subtract its radius
+                // so we only charge movement for distance travelled OUTSIDE the token's edge.
+                if (current.losOrigin.isInitial) {
+                    const tokenRadiusPx = Math.min(tw, th) / 2;
+                    const tokenRadiusUnits =
+                        (tokenRadiusPx / sizePerGridUnit) * costPerGridUnit;
+                    // Math.max(0, ...) ensures we never give negative cost if looking inside the token
+                    distUnits = Math.max(0, distUnits - tokenRadiusUnits);
+                }
+
                 newCost = current.losOrigin.cost + distUnits;
                 nextLosOrigin = current.losOrigin;
             } else {
@@ -205,6 +216,7 @@ function _calculateGridlessTheta(
                     x: currentCenter.x,
                     y: currentCenter.y,
                     cost: current.cost,
+                    isInitial: false, // Explicitly flag that this is NOT the token center!
                 };
             }
 
@@ -746,7 +758,13 @@ function _initializeTokenFootprint(
     const minJ = Math.min(c1.j, c2.j) - padding;
     const maxJ = Math.max(c1.j, c2.j) + padding;
 
-    const startOrigin = { x: centerPt.x, y: centerPt.y, cost: 0 };
+    // Added isInitial flag to track when we are measuring from the true center
+    const startOrigin = {
+        x: centerPt.x,
+        y: centerPt.y,
+        cost: 0,
+        isInitial: true,
+    };
 
     for (let i = minI; i <= maxI; i++) {
         for (let j = minJ; j <= maxJ; j++) {
