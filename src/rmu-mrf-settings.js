@@ -66,6 +66,21 @@ export function registerSettings() {
         precedence: CONST.KEYBINDING_PRECEDENCE.NORMAL,
     });
 
+    game.settings.register(MODULE_ID, "gridlessResolution", {
+        name: "Gridless Resolution (Pixels)",
+        hint: "Controls the size of the invisible grid on Gridless maps. Lower values create a smoother, more accurate shape but require significantly more PC power. Default is 20.",
+        scope: "client", // "client" lets each player pick what their PC can handle
+        config: true,
+        type: Number,
+        range: {
+            min: 5,
+            max: 50,
+            step: 5,
+        },
+        default: 20,
+        onChange: () => Hooks.callAll("rmuMRFRefresh"),
+    });
+
     // 2. Logic Settings
     game.settings.register(MODULE_ID, SETTING_ROUNDING, {
         name: game.i18n.localize("RMU_MRF.settings.movementRounding.name"),
@@ -195,6 +210,10 @@ export function getVisualSettings() {
             Dash: game.settings.get(MODULE_ID, SETTING_COLOR_DASH),
         },
     };
+}
+
+export function getGridlessResolution() {
+    return game.settings.get(MODULE_ID, "gridlessResolution");
 }
 
 function refreshOverlay() {

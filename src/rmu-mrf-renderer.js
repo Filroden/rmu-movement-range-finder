@@ -63,11 +63,27 @@ function _drawGridHighlight(token, squareMap, settings) {
     const isPlayerToken = token.document.hasPlayerOwner;
     const shouldEnforceFog = !game.user.isGM || isPlayerToken;
 
+    // Check if we are faking a micro-grid on a gridless map
+    const isGridless = canvas.grid.type === CONST.GRID_TYPES.GRIDLESS;
+
+    // Calculate the ratio between the micro-grid and the scene grid
+    // E.g., if scene grid is 100px and micro-grid is 20px, ratio is 5.
+    let microGridRatio = 1;
+    if (isGridless) {
+        // We use squareMap.values().next().value.w to safely grab the micro-grid size
+        const sampleSquare = squareMap.values().next().value;
+        if (sampleSquare) {
+            microGridRatio = Math.floor(
+                canvas.scene.grid.size / sampleSquare.w,
+            );
+            if (microGridRatio < 1) microGridRatio = 1;
+        }
+    }
+
     // --- PASS 1: DRAW CELLS (Fill & Text) ---
     for (const [key, square] of squareMap) {
         const isHex = square.gridType !== CONST.GRID_TYPES.SQUARE;
 
-        // CACHE: Pre-calculate center coordinates so we aren't calling API 5000x per frame
         if (square.centerX === undefined) {
             if (isHex) {
                 const center = canvas.grid.getCenterPoint({
@@ -82,7 +98,6 @@ function _drawGridHighlight(token, squareMap, settings) {
             }
         }
 
-        // Fog Check
         if (shouldEnforceFog) {
             const isExplored = canvas.fog.isPointExplored({
                 x: square.centerX,
@@ -93,14 +108,12 @@ function _drawGridHighlight(token, squareMap, settings) {
                 { object: token },
             );
 
-            // CACHE: Store fog visibility state for Pass 2 to skip double-checking
             square.isHiddenByFog = !isExplored && !isVisible;
             if (square.isHiddenByFog) continue;
         } else {
             square.isHiddenByFog = false;
         }
 
-        // CACHE: Color parsing
         if (square.colorInt === undefined) {
             square.colorInt = Color.from(square.color).valueOf();
         }
@@ -110,10 +123,15 @@ function _drawGridHighlight(token, squareMap, settings) {
             : settings.opacity * 0.4;
 
         graphics.beginFill(square.colorInt, drawOpacity);
-        graphics.lineStyle(1, 0x000000, 0.3);
+
+        // HIDE INTERIOR BORDERS ON GRIDLESS
+        if (isGridless) {
+            graphics.lineStyle(0);
+        } else {
+            graphics.lineStyle(1, 0x000000, 0.3);
+        }
 
         if (isHex) {
-            // CACHE: Hex Vertices
             if (square.flatVertices === undefined) {
                 const vertices = canvas.grid.getVertices({
                     i: square.i,
@@ -133,8 +151,22 @@ function _drawGridHighlight(token, squareMap, settings) {
         }
         graphics.endFill();
 
-        // CACHE: Create PIXI.Text exactly ONCE and reuse it
-        if (settings.showLabels && square.isSafe) {
+        // NEW: SPARSE LABELS FOR GRIDLESS
+        let showGridlessLabel = false;
+        if (isGridless) {
+            // Only flag true if both X and Y micro-coordinates are multiples of the ratio.
+            // This draws exactly one label per scene grid square (e.g., every 5 feet).
+            showGridlessLabel =
+                square.i % microGridRatio === 0 &&
+                square.j % microGridRatio === 0;
+        }
+
+        // Apply the Sparse Label logic
+        if (
+            settings.showLabels &&
+            square.isSafe &&
+            (!isGridless || showGridlessLabel)
+        ) {
             if (!square.textObj || square.textObj.destroyed) {
                 const dist = parseFloat(square.cost.toFixed(1));
                 const labelText = `${dist} ${gridUnit}`;
@@ -142,7 +174,6 @@ function _drawGridHighlight(token, squareMap, settings) {
                 square.textObj.anchor.set(0.5);
                 square.textObj.position.set(square.centerX, square.centerY);
             }
-            // Add the existing object back to the new graphics container
             graphics.addChild(square.textObj);
         }
     }

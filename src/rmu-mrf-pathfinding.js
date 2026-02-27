@@ -1,16 +1,12 @@
 /**
- * RMU Movement Range Finder - Pathfinding (Unified Strict Safety)
+ * RMU Movement Range Finder - Pathfinding
  * ---------------------------------------------------------------
  * 1. Square: Uses Dijkstra with STRICT center checks.
  * 2. Hex: Uses Dijkstra with Jump/Bridge logic.
- *
- * "Safety Priority"
- * We overwrite a "Ghost" (Unsafe) path with a "Real" (Safe) path,
- * even if the real path is longer. This prevents wall-jumps from blocking
- * legitimate corridor traversal.
+ * 3. Gridless: Uses Theta* on a synthetic Micro-Grid for true Euclidean circles.
  */
 
-import { getRoundingMode } from "./rmu-mrf-settings.js";
+import { getRoundingMode, getGridlessResolution } from "./rmu-mrf-settings.js";
 
 const METRIC_UNITS = ["m", "m.", "meter", "meters", "metre", "metres"];
 const FT_PER_METER = 3.33333;
@@ -24,9 +20,9 @@ export function calculateReachableSquares(
         return new Map();
 
     const grid = canvas.grid;
-    if (grid.type === CONST.GRID_TYPES.GRIDLESS) return new Map();
-
-    const isHex = grid.type !== CONST.GRID_TYPES.SQUARE;
+    const isHex =
+        grid.type !== CONST.GRID_TYPES.SQUARE &&
+        grid.type !== CONST.GRID_TYPES.GRIDLESS;
 
     // Metric Scaling
     const units = canvas.scene.grid.units?.toLowerCase();
@@ -38,22 +34,29 @@ export function calculateReachableSquares(
         distance: p.distance * distanceScale,
     }));
 
-    // --- SETUP START ---
     const startX = originOverride ? originOverride.x : token.document.x;
     const startY = originOverride ? originOverride.y : token.document.y;
     const tw = token.w;
     const th = token.h;
 
-    // Define the Calculation Origin (Center)
     const centerPt = originOverride
         ? { x: startX + tw / 2, y: startY + th / 2 }
         : token.center;
 
-    // OPTIMISATION: Cache expensive quadtree wall checks globally for this run
     const wallCheckCache = new Map();
 
     // --- ROUTING ---
-    if (isHex) {
+    if (grid.type === CONST.GRID_TYPES.GRIDLESS) {
+        return _calculateGridlessTheta(
+            token,
+            scaledPaces,
+            centerPt,
+            startX,
+            startY,
+            tw,
+            th,
+        );
+    } else if (isHex) {
         return _calculateHex(
             token,
             scaledPaces,
@@ -81,8 +84,191 @@ export function calculateReachableSquares(
 }
 
 /**
- * ALGORITHM 1: SQUARE GRID
+ * ALGORITHM 3: GRIDLESS (Theta* Micro-Grid)
+ * Evaluates a synthetic grid but uses line-of-sight to origin to draw perfect circles.
  */
+function _calculateGridlessTheta(
+    token,
+    scaledPaces,
+    centerPt,
+    startX,
+    startY,
+    tw,
+    th,
+) {
+    const resolutionPx = getGridlessResolution();
+    const costPerGridUnit = canvas.scene.grid.distance;
+    const sizePerGridUnit = canvas.scene.grid.size;
+
+    // Generate the grid first so the helper can use it!
+    const microDistance = (resolutionPx / sizePerGridUnit) * costPerGridUnit;
+    const syntheticGrid = _createSyntheticGrid(resolutionPx, microDistance);
+
+    const minCosts = new Map();
+    const queue = new MinHeap();
+    const safetyMap = new Map();
+
+    // Call our unified helper (isTheta = true)
+    _initializeTokenFootprint(
+        queue,
+        minCosts,
+        safetyMap,
+        syntheticGrid,
+        centerPt,
+        startX,
+        startY,
+        tw,
+        th,
+        true,
+    );
+
+    const searchLimit =
+        Math.max(...scaledPaces.map((p) => p.distance)) + costPerGridUnit * 2;
+
+    const neighborsOffsets = [
+        { di: -1, dj: 0 },
+        { di: 1, dj: 0 },
+        { di: 0, dj: -1 },
+        { di: 0, dj: 1 },
+        { di: -1, dj: -1 },
+        { di: -1, dj: 1 },
+        { di: 1, dj: -1 },
+        { di: 1, dj: 1 },
+    ];
+
+    while (queue.length > 0) {
+        const current = queue.pop();
+        const currentKey = `${current.i}.${current.j}`;
+
+        if (current.cost > minCosts.get(currentKey)) continue;
+
+        const currentCenter = {
+            x: current.i * resolutionPx + resolutionPx / 2,
+            y: current.j * resolutionPx + resolutionPx / 2,
+        };
+
+        for (const n of neighborsOffsets) {
+            const nextI = current.i + n.di;
+            const nextJ = current.j + n.dj;
+            const neighborKey = `${nextI}.${nextJ}`;
+            const neighborCenter = {
+                x: nextI * resolutionPx + resolutionPx / 2,
+                y: nextJ * resolutionPx + resolutionPx / 2,
+            };
+
+            if (
+                !canvas.dimensions.sceneRect.contains(
+                    neighborCenter.x,
+                    neighborCenter.y,
+                )
+            )
+                continue;
+
+            let newCost;
+            let nextLosOrigin;
+
+            // 1. THETA* LOGIC: Try Line of Sight back to the active "Anchor"
+            const hasLOS = !CONFIG.Canvas.polygonBackends.move.testCollision(
+                current.losOrigin,
+                neighborCenter,
+                { type: "move", mode: "any" },
+            );
+
+            if (hasLOS) {
+                // Perfect Euclidean distance from the anchor.
+                const distPx = Math.hypot(
+                    neighborCenter.x - current.losOrigin.x,
+                    neighborCenter.y - current.losOrigin.y,
+                );
+                let distUnits = (distPx / sizePerGridUnit) * costPerGridUnit;
+
+                // If measuring from the token's original center, subtract its radius
+                // so we only charge movement for distance travelled OUTSIDE the token's edge.
+                if (current.losOrigin.isInitial) {
+                    const tokenRadiusPx = Math.min(tw, th) / 2;
+                    const tokenRadiusUnits =
+                        (tokenRadiusPx / sizePerGridUnit) * costPerGridUnit;
+                    // Math.max(0, ...) ensures we never give negative cost if looking inside the token
+                    distUnits = Math.max(0, distUnits - tokenRadiusUnits);
+                }
+
+                newCost = current.losOrigin.cost + distUnits;
+                nextLosOrigin = current.losOrigin;
+            } else {
+                // 2. Blocked by a corner! Fallback to adjacent micro-step and drop a new anchor
+                const hasAdjacentLOS =
+                    !CONFIG.Canvas.polygonBackends.move.testCollision(
+                        currentCenter,
+                        neighborCenter,
+                        { type: "move", mode: "any" },
+                    );
+                if (!hasAdjacentLOS) continue; // Wall blocking the adjacent cells
+
+                const stepPx = Math.hypot(
+                    neighborCenter.x - currentCenter.x,
+                    neighborCenter.y - currentCenter.y,
+                );
+                const stepUnits = (stepPx / sizePerGridUnit) * costPerGridUnit;
+                newCost = current.cost + stepUnits;
+
+                // Drop a new anchor at this corner
+                nextLosOrigin = {
+                    x: currentCenter.x,
+                    y: currentCenter.y,
+                    cost: current.cost,
+                    isInitial: false, // Explicitly flag that this is NOT the token center!
+                };
+            }
+
+            if (newCost > searchLimit) continue;
+
+            const oldCost = minCosts.get(neighborKey);
+            if (oldCost === undefined || newCost < oldCost) {
+                minCosts.set(neighborKey, newCost);
+                safetyMap.set(neighborKey, true);
+                queue.push({
+                    i: nextI,
+                    j: nextJ,
+                    cost: newCost,
+                    losOrigin: nextLosOrigin,
+                });
+            }
+        }
+    }
+
+    return processResults(
+        minCosts,
+        safetyMap,
+        scaledPaces,
+        syntheticGrid,
+        costPerGridUnit,
+    );
+}
+
+function _createSyntheticGrid(resolutionPx, distancePerCell) {
+    return {
+        type: CONST.GRID_TYPES.SQUARE,
+        size: resolutionPx,
+        distance: distancePerCell,
+        getOffset: (pt) => ({
+            i: Math.floor(pt.x / resolutionPx),
+            j: Math.floor(pt.y / resolutionPx),
+        }),
+        getCenterPoint: (coord) => ({
+            x: coord.i * resolutionPx + resolutionPx / 2,
+            y: coord.j * resolutionPx + resolutionPx / 2,
+        }),
+        getTopLeftPoint: (coord) => ({
+            x: coord.i * resolutionPx,
+            y: coord.j * resolutionPx,
+        }),
+    };
+}
+
+// ----------------------------------------------------------------------
+// SQUARE & HEX LEGACY ALGORITHMS
+// ----------------------------------------------------------------------
+
 function _calculateSquare(
     token,
     scaledPaces,
@@ -95,58 +281,26 @@ function _calculateSquare(
     wallCheckCache,
 ) {
     const minCosts = new Map();
-    // OPTIMISATION: Use a MinHeap Priority Queue instead of a flat array
     const queue = new MinHeap();
     const safetyMap = new Map();
 
-    // Define "Safe Zone"
-    const margin = grid.size * 0.02;
-    const safeLeft = startX + margin;
-    const safeRight = startX + tw - margin;
-    const safeTop = startY + margin;
-    const safeBottom = startY + th - margin;
-
-    const c1 = grid.getOffset({ x: startX, y: startY });
-    const c2 = grid.getOffset({ x: startX + tw, y: startY + th });
-    const padding = 1;
-    const minI = Math.min(c1.i, c2.i) - padding;
-    const maxI = Math.max(c1.i, c2.i) + padding;
-    const minJ = Math.min(c1.j, c2.j) - padding;
-    const maxJ = Math.max(c1.j, c2.j) + padding;
-
-    // 1. Initialise Start
-    for (let i = minI; i <= maxI; i++) {
-        for (let j = minJ; j <= maxJ; j++) {
-            const center = grid.getCenterPoint({ i, j });
-            if (
-                center.x >= safeLeft &&
-                center.x <= safeRight &&
-                center.y >= safeTop &&
-                center.y <= safeBottom
-            ) {
-                const key = `${i}.${j}`;
-                if (!minCosts.has(key)) {
-                    minCosts.set(key, 0);
-                    safetyMap.set(key, true);
-                    queue.push({ i, j, cost: 0 });
-                }
-            }
-        }
-    }
-
-    if (queue.length === 0) {
-        const centerOffset = grid.getOffset(centerPt);
-        const key = `${centerOffset.i}.${centerOffset.j}`;
-        minCosts.set(key, 0);
-        safetyMap.set(key, true);
-        queue.push({ i: centerOffset.i, j: centerOffset.j, cost: 0 });
-    }
+    _initializeTokenFootprint(
+        queue,
+        minCosts,
+        safetyMap,
+        grid,
+        centerPt,
+        startX,
+        startY,
+        tw,
+        th,
+        false,
+    );
 
     const costPerGridUnit = Number(grid.distance);
     const maxDistance = Math.max(...scaledPaces.map((p) => p.distance));
     const searchLimit = maxDistance + costPerGridUnit;
 
-    // OPTIMISATION: Pull static fallback array outside the loop
     const fallbackNeighbors = [
         { di: -1, dj: 0, isDiag: false },
         { di: 1, dj: 0, isDiag: false },
@@ -158,13 +312,10 @@ function _calculateSquare(
         { di: 1, dj: 1, isDiag: true },
     ];
 
-    // 2. Standard Dijkstra Loop
     while (queue.length > 0) {
-        // Pop the lowest cost node mathematically
         const current = queue.pop();
         const currentKey = `${current.i}.${current.j}`;
 
-        // Standard Dijkstra Skip
         if (current.cost > minCosts.get(currentKey)) continue;
 
         const currentCenter = grid.getCenterPoint({
@@ -172,7 +323,6 @@ function _calculateSquare(
             j: current.j,
         });
 
-        // Get Neighbors
         let neighbors = [];
         if (grid.getAdjacentOffsets) {
             neighbors = grid
@@ -214,23 +364,20 @@ function _calculateSquare(
             const newCost = current.cost + stepDist;
             if (newCost > searchLimit) continue;
 
-            // --- SAFETY PRIORITY CHECK ---
             const oldCost = minCosts.get(neighborKey);
             const wasSafe = safetyMap.get(neighborKey);
-            const isNowSafe = true; // Squares are always "Safe" if reachable
+            const isNowSafe = true;
 
-            // Standard check: Is new path more expensive?
             if (oldCost !== undefined && newCost >= oldCost) {
-                // EXCEPTION: If old was Unsafe and new is Safe, allow overwrite!
-                if (wasSafe && !isNowSafe) continue; // Downgrade? No.
-                if (wasSafe === isNowSafe) continue; // Same safety? Use cost.
+                if (wasSafe && !isNowSafe) continue;
+                if (wasSafe === isNowSafe) continue;
             }
 
             const isReachable = checkCellStrict(
                 token,
                 currentCenter,
-                neighbor.i,
-                neighbor.j,
+                neighborCenter,
+                neighborKey,
                 wallCheckCache,
             );
 
@@ -251,10 +398,6 @@ function _calculateSquare(
     );
 }
 
-/**
- * ALGORITHM 2: HEX GRID
- * Includes Safety Priority Logic to fix "Ghost Blocking".
- */
 function _calculateHex(
     token,
     scaledPaces,
@@ -268,60 +411,29 @@ function _calculateHex(
 ) {
     const minCosts = new Map();
     const safetyMap = new Map();
-    // OPTIMISATION: Use a MinHeap Priority Queue
     const queue = new MinHeap();
 
-    const margin = grid.size * 0.02;
-    const safeLeft = startX + margin;
-    const safeRight = startX + tw - margin;
-    const safeTop = startY + margin;
-    const safeBottom = startY + th - margin;
-
-    const c1 = grid.getOffset({ x: startX, y: startY });
-    const c2 = grid.getOffset({ x: startX + tw, y: startY + th });
-    const padding = 1;
-    const minI = Math.min(c1.i, c2.i) - padding;
-    const maxI = Math.max(c1.i, c2.i) + padding;
-    const minJ = Math.min(c1.j, c2.j) - padding;
-    const maxJ = Math.max(c1.j, c2.j) + padding;
-
-    for (let i = minI; i <= maxI; i++) {
-        for (let j = minJ; j <= maxJ; j++) {
-            const center = grid.getCenterPoint({ i, j });
-            if (
-                center.x >= safeLeft &&
-                center.x <= safeRight &&
-                center.y >= safeTop &&
-                center.y <= safeBottom
-            ) {
-                const key = `${i}.${j}`;
-                if (!minCosts.has(key)) {
-                    minCosts.set(key, 0);
-                    safetyMap.set(key, true);
-                    queue.push({ i, j, cost: 0 });
-                }
-            }
-        }
-    }
-
-    if (queue.length === 0) {
-        const centerOffset = grid.getOffset(centerPt);
-        const key = `${centerOffset.i}.${centerOffset.j}`;
-        minCosts.set(key, 0);
-        safetyMap.set(key, true);
-        queue.push({ i: centerOffset.i, j: centerOffset.j, cost: 0 });
-    }
+    _initializeTokenFootprint(
+        queue,
+        minCosts,
+        safetyMap,
+        grid,
+        centerPt,
+        startX,
+        startY,
+        tw,
+        th,
+        false,
+    );
 
     const costPerGridUnit = Number(grid.distance);
     const maxDistance = Math.max(...scaledPaces.map((p) => p.distance));
     const searchLimit = maxDistance + costPerGridUnit;
 
     while (queue.length > 0) {
-        // Pop the lowest cost node
         const current = queue.pop();
         const currentKey = `${current.i}.${current.j}`;
 
-        // Standard Skip: If we found a cheaper way to get here, ignore this path.
         if (current.cost > minCosts.get(currentKey)) continue;
 
         const neighbors = grid.getAdjacentOffsets({
@@ -349,12 +461,11 @@ function _calculateHex(
 
             let stepDist = costPerGridUnit;
 
-            // --- 1. DIRECT PATH (Adjacent) ---
             const isDirectReachable = checkCellStrict(
                 token,
                 currentCenter,
-                nextI,
-                nextJ,
+                neighborCenter,
+                neighborKey,
                 wallCheckCache,
             );
 
@@ -364,14 +475,14 @@ function _calculateHex(
                 if (newCost <= searchLimit) {
                     const oldCost = minCosts.get(neighborKey);
                     const wasSafe = safetyMap.get(neighborKey);
-                    const isNowSafe = true; // Direct path is always Safe
+                    const isNowSafe = true;
 
                     let shouldUpdate = false;
                     if (oldCost === undefined) shouldUpdate = true;
                     else if (wasSafe === false && isNowSafe === true)
-                        shouldUpdate = true; // Upgrade to Safe!
+                        shouldUpdate = true;
                     else if (newCost < oldCost && wasSafe === isNowSafe)
-                        shouldUpdate = true; // Cheaper same-tier path
+                        shouldUpdate = true;
 
                     if (shouldUpdate) {
                         minCosts.set(neighborKey, newCost);
@@ -380,7 +491,6 @@ function _calculateHex(
                     }
                 }
             } else {
-                // --- 2. JUMP/BRIDGE LOGIC ---
                 const jumpNeighbors = grid.getAdjacentOffsets({
                     i: nextI,
                     j: nextJ,
@@ -391,11 +501,17 @@ function _calculateHex(
                     const jumpJ = jn.j;
                     if (jumpI === current.i && jumpJ === current.j) continue;
 
+                    const jumpKey = `${jumpI}.${jumpJ}`;
+                    const jumpCenter = grid.getCenterPoint({
+                        i: jumpI,
+                        j: jumpJ,
+                    });
+
                     const isJumpReachable = checkCellStrict(
                         token,
                         currentCenter,
-                        jumpI,
-                        jumpJ,
+                        jumpCenter,
+                        jumpKey,
                         wallCheckCache,
                     );
 
@@ -403,10 +519,7 @@ function _calculateHex(
                         const jumpCost = current.cost + stepDist * 2;
                         if (jumpCost > searchLimit) continue;
 
-                        const jumpKey = `${jumpI}.${jumpJ}`;
                         const bridgeCost = current.cost + stepDist;
-
-                        // A. UPDATE THE JUMP TARGET (Safe)
                         const oldJumpCost = minCosts.get(jumpKey);
                         const jumpWasSafe = safetyMap.get(jumpKey);
                         const jumpIsSafe = true;
@@ -427,20 +540,18 @@ function _calculateHex(
                             queue.push({ i: jumpI, j: jumpJ, cost: jumpCost });
                         }
 
-                        // B. UPDATE THE BRIDGE (Ghost / Unsafe)
                         const oldBridgeCost = minCosts.get(neighborKey);
                         const bridgeWasSafe = safetyMap.get(neighborKey);
 
                         let updateBridge = false;
                         if (oldBridgeCost === undefined) updateBridge = true;
-                        else if (bridgeWasSafe === true)
-                            updateBridge = false; // Never downgrade a Safe node
+                        else if (bridgeWasSafe === true) updateBridge = false;
                         else if (bridgeCost < oldBridgeCost)
-                            updateBridge = true; // Cheaper Ghost path
+                            updateBridge = true;
 
                         if (updateBridge) {
                             minCosts.set(neighborKey, bridgeCost);
-                            safetyMap.set(neighborKey, false); // Mark as Ghost
+                            safetyMap.set(neighborKey, false);
                         }
                     }
                 }
@@ -459,60 +570,26 @@ function _calculateHex(
 
 // --- HELPERS ---
 
-/**
- * Strict safety check.
- * Source: NULL to enforce pure geometry check (prevents Token Size from blocking corridors).
- */
-function checkCellStrict(token, originPoint, i, j, wallCheckCache) {
-    const grid = canvas.grid;
-    const destCenter = grid.getCenterPoint({ i, j });
-    const cacheKey = `${i}.${j}`;
-
-    // OPTIMISATION: Safety Check (Cached)
+function checkCellStrict(
+    token,
+    originPoint,
+    destCenter,
+    cacheKey,
+    wallCheckCache,
+) {
     let isClear = wallCheckCache.get(cacheKey);
     if (isClear === undefined) {
-        isClear = isPointClearOfWalls(destCenter);
+        // We removed the 2px bounding box tolerance check here that was artificially snagging on doors!
+        isClear = true;
         wallCheckCache.set(cacheKey, isClear);
     }
-
     if (!isClear) return false;
 
-    // 2. Raycast (Pure Geometry)
     return !CONFIG.Canvas.polygonBackends.move.testCollision(
         originPoint,
         destCenter,
         { type: "move", mode: "any", source: null },
     );
-}
-
-function isPointClearOfWalls(point) {
-    if (canvas.walls && canvas.walls.quadtree) {
-        const tolerance = 2;
-        const bounds = new PIXI.Rectangle(
-            point.x - tolerance,
-            point.y - tolerance,
-            tolerance * 2,
-            tolerance * 2,
-        );
-        const walls = canvas.walls.quadtree.getObjects(bounds);
-        for (const wall of walls) {
-            if (wall.document.move === CONST.WALL_SENSE_TYPES.NONE) continue;
-            const A = wall.edge?.a ?? wall.A;
-            const B = wall.edge?.b ?? wall.B;
-            const dist = _distToSegment(point, A, B);
-            if (dist < tolerance) return false;
-        }
-    }
-    return true;
-}
-
-function _distToSegment(p, v, w) {
-    const l2 = (w.x - v.x) ** 2 + (w.y - v.y) ** 2;
-    if (l2 === 0) return Math.hypot(p.x - v.x, p.y - v.y);
-    let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
-    t = Math.max(0, Math.min(1, t));
-    const projection = { x: v.x + t * (w.x - v.x), y: v.y + t * (w.y - v.y) };
-    return Math.hypot(p.x - projection.x, p.y - projection.y);
 }
 
 function processResults(
@@ -532,7 +609,6 @@ function processResults(
         scaledPaces.find((p) => p.isActionLimit) ||
         scaledPaces.find((p) => p.name === "Sprint") ||
         (sortedPaces.length > 1 ? sortedPaces[1] : sortedPaces[0]);
-
     const limitDistance = limitPace ? limitPace.distance : 0;
     const limitColor = limitPace ? limitPace.color : "#FFFFFF";
 
@@ -563,7 +639,6 @@ function processResults(
                 roundingRule,
                 costPerGridUnit,
             );
-
             const isSafe = safetyMap.get(key) === true;
 
             resultSquares.set(
@@ -605,7 +680,6 @@ function isCostWithinPace(cost, limit, rule, gridSize) {
     }
 }
 
-// OPTIMISATION: Binary Min-Heap Priority Queue for extremely fast routing
 class MinHeap {
     constructor() {
         this.data = [];
@@ -650,6 +724,101 @@ class MinHeap {
             this.data[index] = this.data[smallest];
             this.data[smallest] = tmp;
             index = smallest;
+        }
+    }
+}
+
+/**
+ * Unifies the initial token footprint calculation across all 3 grid modes.
+ * Prevents wall leaks and handles Tiny tokens that don't fill a whole square.
+ */
+function _initializeTokenFootprint(
+    queue,
+    minCosts,
+    safetyMap,
+    grid,
+    centerPt,
+    startX,
+    startY,
+    tw,
+    th,
+    isTheta = false,
+) {
+    const margin = grid.size * 0.02;
+    const safeLeft = startX + margin;
+    const safeRight = startX + tw - margin;
+    const safeTop = startY + margin;
+    const safeBottom = startY + th - margin;
+
+    const c1 = grid.getOffset({ x: startX, y: startY });
+    const c2 = grid.getOffset({ x: startX + tw, y: startY + th });
+    const padding = 1;
+    const minI = Math.min(c1.i, c2.i) - padding;
+    const maxI = Math.max(c1.i, c2.i) + padding;
+    const minJ = Math.min(c1.j, c2.j) - padding;
+    const maxJ = Math.max(c1.j, c2.j) + padding;
+
+    // Added isInitial flag to track when we are measuring from the true center
+    const startOrigin = {
+        x: centerPt.x,
+        y: centerPt.y,
+        cost: 0,
+        isInitial: true,
+    };
+
+    for (let i = minI; i <= maxI; i++) {
+        for (let j = minJ; j <= maxJ; j++) {
+            const center = grid.getCenterPoint({ i, j });
+            if (
+                center.x >= safeLeft &&
+                center.x <= safeRight &&
+                center.y >= safeTop &&
+                center.y <= safeBottom
+            ) {
+                const isVisible =
+                    !CONFIG.Canvas.polygonBackends.move.testCollision(
+                        centerPt,
+                        center,
+                        { type: "move", mode: "any" },
+                    );
+
+                if (isVisible) {
+                    const key = `${i}.${j}`;
+                    if (!minCosts.has(key)) {
+                        minCosts.set(key, 0);
+                        safetyMap.set(key, true);
+                        if (isTheta) {
+                            queue.push({
+                                i,
+                                j,
+                                cost: 0,
+                                losOrigin: startOrigin,
+                            });
+                        } else {
+                            queue.push({ i, j, cost: 0 });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback: If token is so small it doesn't encompass any grid centers (e.g. Tiny),
+    // force its current occupied cell as the starting point.
+    if (queue.length === 0) {
+        const centerOffset = grid.getOffset(centerPt);
+        const key = `${centerOffset.i}.${centerOffset.j}`;
+        minCosts.set(key, 0);
+        safetyMap.set(key, true);
+        if (isTheta) {
+            queue.push({
+                i: centerOffset.i,
+                j: centerOffset.j,
+                cost: 0,
+                losOrigin: startOrigin,
+            });
+        } else {
+            queue.push({ i: centerOffset.i, j: centerOffset.j, cost: 0 });
         }
     }
 }
