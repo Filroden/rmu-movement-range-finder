@@ -10,8 +10,6 @@
     "RMU_MRF.settings.movementRounding.choices.full": "Strict : Entrer seulement s'il reste le coût COMPLET de la case (100%)",
     "RMU_MRF.settings.overlayOpacity.name": "Opacité de la superposition",
     "RMU_MRF.settings.overlayOpacity.hint": "Transparence de la grille de mouvement (0.0 = transparent, 1.0 = opaque).",
-    "RMU_MRF.settings.showDistanceLabels.name": "Afficher les distances",
-    "RMU_MRF.settings.showDistanceLabels.hint": "Afficher le coût en distance (ex: '1,5 m') sur chaque case.",
     "RMU_MRF.settings.colorPace": "Couleur : {pace}",
     "RMU_MRF.keybindings.toggleOverlay.name": "Basculer l'affichage du mouvement",
     "RMU_MRF.keybindings.toggleOverlay.hint": "Affiche ou cache l'indicateur de portée de mouvement RMU.",
@@ -24,5 +22,6 @@
     "RMU_MRF.paces.Jog": "Trotter",
     "RMU_MRF.paces.Run": "Courir",
     "RMU_MRF.paces.Sprint": "Sprinter",
-    "RMU_MRF.paces.Dash": "Foncer"
+    "RMU_MRF.paces.Dash": "Foncer",
+    "RMU_MRF.paces.Anchor": "Ancre"
 }

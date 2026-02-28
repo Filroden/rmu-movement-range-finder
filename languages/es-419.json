@@ -10,8 +10,6 @@
     "RMU_MRF.settings.movementRounding.choices.full": "Estricto: Entrar solo si queda el costo COMPLETO del cuadro (100%)",
     "RMU_MRF.settings.overlayOpacity.name": "Opacidad de la superposición",
     "RMU_MRF.settings.overlayOpacity.hint": "Transparencia de la cuadrícula de movimiento (0.0 = transparente, 1.0 = sólido).",
-    "RMU_MRF.settings.showDistanceLabels.name": "Mostrar etiquetas de distancia",
-    "RMU_MRF.settings.showDistanceLabels.hint": "Mostrar el costo de distancia (ej. '15 pies') en cada cuadro de la cuadrícula.",
     "RMU_MRF.settings.colorPace": "Color: {pace}",
     "RMU_MRF.keybindings.toggleOverlay.name": "Alternar superposición de movimiento",
     "RMU_MRF.keybindings.toggleOverlay.hint": "Muestra u oculta el buscador de alcance de movimiento RMU.",
@@ -24,5 +22,6 @@
     "RMU_MRF.paces.Jog": "Trotar",
     "RMU_MRF.paces.Run": "Correr",
     "RMU_MRF.paces.Sprint": "Esprintar",
-    "RMU_MRF.paces.Dash": "Cargar"
+    "RMU_MRF.paces.Dash": "Cargar",
+    "RMU_MRF.paces.Anchor": "Ancla"
 }

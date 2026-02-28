@@ -12,7 +12,6 @@ export const MODULE_ID = "rmu-movement-range-finder";
 const SETTING_ENABLED = "enabled";
 const SETTING_ROUNDING = "roundingMode";
 const SETTING_OPACITY = "opacity";
-const SETTING_SHOW_LABELS = "showLabels";
 
 // Colour Setting Keys
 const SETTING_COLOR_CREEP = "colorCreep";
@@ -21,6 +20,7 @@ const SETTING_COLOR_JOG = "colorJog";
 const SETTING_COLOR_RUN = "colorRun";
 const SETTING_COLOR_SPRINT = "colorSprint";
 const SETTING_COLOR_DASH = "colorDash";
+const SETTING_COLOR_ANCHOR = "colorAnchor";
 
 /**
  * Register all module settings.
@@ -115,18 +115,9 @@ export function registerSettings() {
         onChange: refreshOverlay,
     });
 
-    game.settings.register(MODULE_ID, SETTING_SHOW_LABELS, {
-        name: game.i18n.localize("RMU_MRF.settings.showDistanceLabels.name"),
-        hint: game.i18n.localize("RMU_MRF.settings.showDistanceLabels.hint"),
-        scope: "client",
-        config: true,
-        type: Boolean,
-        default: true,
-        onChange: refreshOverlay,
-    });
-
     // 4. Colour Settings
     const defaultColors = {
+        [SETTING_COLOR_ANCHOR]: { name: "Anchor", color: "#0000AA" },
         [SETTING_COLOR_CREEP]: { name: "Creep", color: "#00FFFF" },
         [SETTING_COLOR_WALK]: { name: "Walk", color: "#00FF00" },
         [SETTING_COLOR_JOG]: { name: "Jog", color: "#ADFF2F" },
@@ -152,6 +143,7 @@ Hooks.on("renderSettingsConfig", (app, html, data) => {
     const $html = $(html);
 
     const colorSettings = [
+        SETTING_COLOR_ANCHOR,
         SETTING_COLOR_CREEP,
         SETTING_COLOR_WALK,
         SETTING_COLOR_JOG,
@@ -200,8 +192,8 @@ export function getVisualSettings() {
     return {
         enabled: game.settings.get(MODULE_ID, SETTING_ENABLED),
         opacity: game.settings.get(MODULE_ID, SETTING_OPACITY),
-        showLabels: game.settings.get(MODULE_ID, SETTING_SHOW_LABELS),
         colors: {
+            Anchor: game.settings.get(MODULE_ID, SETTING_COLOR_ANCHOR),
             Creep: game.settings.get(MODULE_ID, SETTING_COLOR_CREEP),
             Walk: game.settings.get(MODULE_ID, SETTING_COLOR_WALK),
             Jog: game.settings.get(MODULE_ID, SETTING_COLOR_JOG),

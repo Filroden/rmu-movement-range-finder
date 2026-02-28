@@ -96,6 +96,7 @@ function _calculateGridlessTheta(
     tw,
     th,
 ) {
+    const parents = new Map();
     const resolutionPx = getGridlessResolution();
     const costPerGridUnit = canvas.scene.grid.distance;
     const sizePerGridUnit = canvas.scene.grid.size;
@@ -225,6 +226,7 @@ function _calculateGridlessTheta(
             const oldCost = minCosts.get(neighborKey);
             if (oldCost === undefined || newCost < oldCost) {
                 minCosts.set(neighborKey, newCost);
+                parents.set(neighborKey, currentKey);
                 safetyMap.set(neighborKey, true);
                 queue.push({
                     i: nextI,
@@ -242,6 +244,7 @@ function _calculateGridlessTheta(
         scaledPaces,
         syntheticGrid,
         costPerGridUnit,
+        parents,
     );
 }
 
@@ -280,6 +283,7 @@ function _calculateSquare(
     th,
     wallCheckCache,
 ) {
+    const parents = new Map();
     const minCosts = new Map();
     const queue = new MinHeap();
     const safetyMap = new Map();
@@ -383,6 +387,7 @@ function _calculateSquare(
 
             if (isReachable) {
                 minCosts.set(neighborKey, newCost);
+                parents.set(neighborKey, currentKey);
                 safetyMap.set(neighborKey, true);
                 queue.push({ i: neighbor.i, j: neighbor.j, cost: newCost });
             }
@@ -395,6 +400,7 @@ function _calculateSquare(
         scaledPaces,
         grid,
         costPerGridUnit,
+        parents,
     );
 }
 
@@ -409,6 +415,7 @@ function _calculateHex(
     th,
     wallCheckCache,
 ) {
+    const parents = new Map();
     const minCosts = new Map();
     const safetyMap = new Map();
     const queue = new MinHeap();
@@ -486,6 +493,7 @@ function _calculateHex(
 
                     if (shouldUpdate) {
                         minCosts.set(neighborKey, newCost);
+                        parents.set(neighborKey, currentKey);
                         safetyMap.set(neighborKey, true);
                         queue.push({ i: nextI, j: nextJ, cost: newCost });
                     }
@@ -536,6 +544,7 @@ function _calculateHex(
 
                         if (updateJump) {
                             minCosts.set(jumpKey, jumpCost);
+                            parents.set(neighborKey, currentKey);
                             safetyMap.set(jumpKey, true);
                             queue.push({ i: jumpI, j: jumpJ, cost: jumpCost });
                         }
@@ -551,6 +560,7 @@ function _calculateHex(
 
                         if (updateBridge) {
                             minCosts.set(neighborKey, bridgeCost);
+                            parents.set(neighborKey, currentKey);
                             safetyMap.set(neighborKey, false);
                         }
                     }
@@ -565,6 +575,7 @@ function _calculateHex(
         scaledPaces,
         grid,
         costPerGridUnit,
+        parents,
     );
 }
 
@@ -598,6 +609,7 @@ function processResults(
     scaledPaces,
     grid,
     costPerGridUnit,
+    parents,
 ) {
     const roundingRule = getRoundingMode();
     const resultSquares = new Map();
@@ -613,8 +625,16 @@ function processResults(
     const limitColor = limitPace ? limitPace.color : "#FFFFFF";
 
     for (const [key, cost] of minCosts) {
-        if (cost === 0) continue;
         const [i, j] = key.split(".").map(Number);
+
+        // Translate the i.j parent key into an x.y coordinate key for the renderer
+        const parentIJ = parents ? parents.get(key) : null;
+        let parentKey = null;
+        if (parentIJ) {
+            const [pI, pJ] = parentIJ.split(".").map(Number);
+            const pTopLeft = grid.getTopLeftPoint({ i: pI, j: pJ });
+            parentKey = `${Math.round(pTopLeft.x)}.${Math.round(pTopLeft.y)}`;
+        }
 
         let bestPace = null;
         for (const pace of sortedPaces) {
@@ -657,6 +677,8 @@ function processResults(
                     isInnerZone,
                     limitColor,
                     isSafe: isSafe,
+                    isAnchor: cost === 0,
+                    parentKey: parentKey,
                 },
             );
         }
