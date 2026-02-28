@@ -10,8 +10,6 @@
     "RMU_MRF.settings.movementRounding.choices.full": "Strict: Enter only if FULL grid cost remains (100%)",
     "RMU_MRF.settings.overlayOpacity.name": "Overlay Opacity",
     "RMU_MRF.settings.overlayOpacity.hint": "Transparency of the movement grid (0.0 = transparent, 1.0 = solid).",
-    "RMU_MRF.settings.showDistanceLabels.name": "Show Distance Labels",
-    "RMU_MRF.settings.showDistanceLabels.hint": "Display the distance cost (e.g., '15 ft') on every grid square.",
     "RMU_MRF.settings.colorPace": "Color: {pace}",
     "RMU_MRF.keybindings.toggleOverlay.name": "Toggle Movement Overlay",
     "RMU_MRF.keybindings.toggleOverlay.hint": "Shows or hides the RMU movement range finder.",

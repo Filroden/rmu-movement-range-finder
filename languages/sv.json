@@ -10,8 +10,6 @@
     "RMU_MRF.settings.movementRounding.choices.full": "Strikt: Gå in endast om HELA kostnaden återstår (100%)",
     "RMU_MRF.settings.overlayOpacity.name": "Överläggets opacitet",
     "RMU_MRF.settings.overlayOpacity.hint": "Genomskinlighet för rörelserutnätet (0.0 = genomskinlig, 1.0 = solid).",
-    "RMU_MRF.settings.showDistanceLabels.name": "Visa avstånd",
-    "RMU_MRF.settings.showDistanceLabels.hint": "Visa avståndskostnaden (t.ex. '2 m') på varje ruta.",
     "RMU_MRF.settings.colorPace": "Färg: {pace}",
     "RMU_MRF.keybindings.toggleOverlay.name": "Växla rörelseöverlägg",
     "RMU_MRF.keybindings.toggleOverlay.hint": "Visar eller döljer RMU rörelseavståndsmätare.",

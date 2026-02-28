@@ -12,7 +12,6 @@ export const MODULE_ID = "rmu-movement-range-finder";
 const SETTING_ENABLED = "enabled";
 const SETTING_ROUNDING = "roundingMode";
 const SETTING_OPACITY = "opacity";
-const SETTING_SHOW_LABELS = "showLabels";
 
 // Colour Setting Keys
 const SETTING_COLOR_CREEP = "colorCreep";
@@ -116,16 +115,6 @@ export function registerSettings() {
         onChange: refreshOverlay,
     });
 
-    game.settings.register(MODULE_ID, SETTING_SHOW_LABELS, {
-        name: game.i18n.localize("RMU_MRF.settings.showDistanceLabels.name"),
-        hint: game.i18n.localize("RMU_MRF.settings.showDistanceLabels.hint"),
-        scope: "client",
-        config: true,
-        type: Boolean,
-        default: true,
-        onChange: refreshOverlay,
-    });
-
     // 4. Colour Settings
     const defaultColors = {
         [SETTING_COLOR_ANCHOR]: { name: "Anchor", color: "#0000AA" },
@@ -203,7 +192,6 @@ export function getVisualSettings() {
     return {
         enabled: game.settings.get(MODULE_ID, SETTING_ENABLED),
         opacity: game.settings.get(MODULE_ID, SETTING_OPACITY),
-        showLabels: game.settings.get(MODULE_ID, SETTING_SHOW_LABELS),
         colors: {
             Anchor: game.settings.get(MODULE_ID, SETTING_COLOR_ANCHOR),
             Creep: game.settings.get(MODULE_ID, SETTING_COLOR_CREEP),

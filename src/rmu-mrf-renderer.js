@@ -19,21 +19,23 @@ export function drawOverlay(token, data, mode, anchor) {
 
 export function clearOverlay() {
     const container = canvas.interface.reverseMask || canvas.interface;
+
+    // Clean up the interactive mouse listener
+    if (container._rmuHoverListener) {
+        canvas.stage.off("pointermove", container._rmuHoverListener);
+        container._rmuHoverListener = null;
+    }
+
     const toRemove = container.children.filter(
-        (c) => c.name === "rmuMovementGraphics" || c.name === "rmuMovementRing",
+        (c) =>
+            c.name === "rmuMovementGraphics" ||
+            c.name === "rmuMovementHoverLayer",
     );
 
     toRemove.forEach((c) => {
-        // Detach our cached text objects before destroying
-        // the graphics container so PIXI doesn't garbage collect them!
         c.removeChildren();
-        c.destroy();
+        c.destroy({ children: true }); // Ensure deep cleanup
     });
-
-    if (container._rmuHoverListener) {
-        container.off("pointermove", container._rmuHoverListener);
-        container._rmuHoverListener = null;
-    }
 }
 
 /**
@@ -46,17 +48,6 @@ function _drawGridHighlight(token, squareMap, settings) {
     graphics.eventMode = "none";
 
     const gridSize = canvas.scene.grid.size;
-    const fontSize = Math.max(10, Math.floor(gridSize * 0.15));
-
-    const textStyle = new PIXI.TextStyle({
-        fontFamily: "Arial",
-        fontSize: fontSize,
-        fontWeight: "bold",
-        fill: "white",
-        stroke: "black",
-        strokeThickness: 3,
-        align: "center",
-    });
     const gridUnit = canvas.scene.grid.units || "ft";
 
     // OPTIMISATION: Hoist invariant variables outside the loop
@@ -155,32 +146,6 @@ function _drawGridHighlight(token, squareMap, settings) {
             graphics.drawRect(square.x, square.y, square.w, square.h);
         }
         graphics.endFill();
-
-        // SPARSE LABELS FOR GRIDLESS
-        let showGridlessLabel = false;
-        if (isGridless) {
-            // Only flag true if both X and Y micro-coordinates are multiples of the ratio.
-            // This draws exactly one label per scene grid square (e.g., every 5 feet).
-            showGridlessLabel =
-                square.i % microGridRatio === 0 &&
-                square.j % microGridRatio === 0;
-        }
-
-        // Apply the Sparse Label logic
-        if (
-            settings.showLabels &&
-            square.isSafe &&
-            (!isGridless || showGridlessLabel)
-        ) {
-            if (!square.textObj || square.textObj.destroyed) {
-                const dist = parseFloat(square.cost.toFixed(1));
-                const labelText = `${dist} ${gridUnit}`;
-                square.textObj = new PIXI.Text(labelText, textStyle);
-                square.textObj.anchor.set(0.5);
-                square.textObj.position.set(square.centerX, square.centerY);
-            }
-            graphics.addChild(square.textObj);
-        }
     }
 
     // --- PASS 2: DRAW BOUNDARY LINES (Thick Limit & Thin Pace Borders) ---
@@ -386,6 +351,97 @@ function _drawGridHighlight(token, squareMap, settings) {
     }
 
     container.addChild(graphics);
+
+    // --- PASS 3: INTERACTIVE HOVER TOOLTIP  ---
+    const hoverLayer = new PIXI.Container();
+    hoverLayer.name = "rmuMovementHoverLayer";
+
+    const hoverPath = new PIXI.Graphics();
+    const hoverText = new PIXI.Text(
+        "",
+        new PIXI.TextStyle({
+            fontFamily: "Arial",
+            fontSize: Math.max(16, Math.floor(gridSize * 0.35)), // Big, readable font!
+            fontWeight: "bold",
+            fill: "white",
+            stroke: "black",
+            strokeThickness: 4,
+            dropShadow: true,
+            dropShadowColor: "#000000",
+            dropShadowBlur: 4,
+            dropShadowDistance: 2,
+            align: "center",
+        }),
+    );
+    hoverText.anchor.set(0.5, 1); // Anchor at the bottom center so it floats ABOVE the mouse
+
+    hoverLayer.addChild(hoverPath);
+    hoverLayer.addChild(hoverText);
+    container.addChild(hoverLayer);
+
+    // Create the mouse tracking listener
+    container._rmuHoverListener = (event) => {
+        // Convert screen coordinates to canvas map coordinates
+        const local = container.worldTransform.applyInverse(event.data.global);
+
+        let hoverKey = null;
+
+        // Figure out exactly which cell the mouse is currently hovering over
+        if (isGridless) {
+            const res = squareMap.values().next().value.w;
+            const i = Math.floor(local.x / res);
+            const j = Math.floor(local.y / res);
+            hoverKey = `${Math.round(i * res)}.${Math.round(j * res)}`;
+        } else {
+            const offset = canvas.grid.getOffset(local);
+            const topLeft = canvas.grid.getTopLeftPoint(offset);
+            hoverKey = `${Math.round(topLeft.x)}.${Math.round(topLeft.y)}`;
+        }
+
+        const hoveredSquare = squareMap.get(hoverKey);
+
+        hoverPath.clear();
+
+        if (!hoveredSquare || hoveredSquare.isHiddenByFog) {
+            hoverText.visible = false;
+            return;
+        }
+
+        // 1. Trace the breadcrumbs back to the Anchor
+        const pathPoints = [];
+        let curr = hoveredSquare;
+        while (curr) {
+            pathPoints.push({ x: curr.centerX, y: curr.centerY });
+            if (curr.isAnchor) break;
+            curr = squareMap.get(curr.parentKey);
+        }
+
+        // 2. Draw the path line (Thick, bright white with a slight transparency)
+        if (pathPoints.length > 1) {
+            hoverPath.lineStyle(6, 0xffffff, 0.7);
+            hoverPath.moveTo(pathPoints[0].x, pathPoints[0].y);
+            for (let i = 1; i < pathPoints.length; i++) {
+                hoverPath.lineTo(pathPoints[i].x, pathPoints[i].y);
+            }
+        }
+
+        // 3. Draw a crisp circle directly under the mouse
+        hoverPath.beginFill(0xffffff, 0.9);
+        hoverPath.lineStyle(2, 0x000000, 0.8);
+        hoverPath.drawCircle(hoveredSquare.centerX, hoveredSquare.centerY, 8);
+        hoverPath.endFill();
+
+        // 4. Update and position the large tooltip text
+        hoverText.text = `${parseFloat(hoveredSquare.cost.toFixed(1))} ${gridUnit}`;
+        hoverText.position.set(
+            hoveredSquare.centerX,
+            hoveredSquare.centerY - 15,
+        );
+        hoverText.visible = true;
+    };
+
+    // Attach the listener to the canvas stage
+    canvas.stage.on("pointermove", container._rmuHoverListener);
 }
 
 /**
