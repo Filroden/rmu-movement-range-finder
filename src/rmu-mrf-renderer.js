@@ -62,6 +62,7 @@ function _drawGridHighlight(token, squareMap, settings) {
     // OPTIMISATION: Hoist invariant variables outside the loop
     const isPlayerToken = token.document.hasPlayerOwner;
     const shouldEnforceFog = !game.user.isGM || isPlayerToken;
+    const anchorColorInt = Color.from(settings.colors.Anchor).valueOf();
 
     // Check if we are faking a micro-grid on a gridless map
     const isGridless = canvas.grid.type === CONST.GRID_TYPES.GRIDLESS;
@@ -122,7 +123,11 @@ function _drawGridHighlight(token, squareMap, settings) {
             ? settings.opacity
             : settings.opacity * 0.4;
 
-        graphics.beginFill(square.colorInt, drawOpacity);
+        if (square.isAnchor) {
+            graphics.beginFill(anchorColorInt, settings.opacity);
+        } else {
+            graphics.beginFill(square.colorInt, drawOpacity);
+        }
 
         // HIDE INTERIOR BORDERS ON GRIDLESS
         if (isGridless) {
@@ -151,7 +156,7 @@ function _drawGridHighlight(token, squareMap, settings) {
         }
         graphics.endFill();
 
-        // NEW: SPARSE LABELS FOR GRIDLESS
+        // SPARSE LABELS FOR GRIDLESS
         let showGridlessLabel = false;
         if (isGridless) {
             // Only flag true if both X and Y micro-coordinates are multiples of the ratio.
@@ -178,65 +183,84 @@ function _drawGridHighlight(token, squareMap, settings) {
         }
     }
 
-    // --- PASS 2: DRAW LIMIT BOUNDARY LINES (Thick Border) ---
+    // --- PASS 2: DRAW BOUNDARY LINES (Thick Limit & Thin Pace Borders) ---
     for (const [key, square] of squareMap) {
-        if (!square.isInnerZone) continue;
-
-        // Skip if hidden by fog (Using state cached in Pass 1!)
         if (square.isHiddenByFog) continue;
 
-        // CACHE: Limit Color
-        if (square.limitColorInt === undefined) {
-            square.limitColorInt = Color.from(square.limitColor).valueOf();
-        }
-        graphics.lineStyle(4, square.limitColorInt, 1.0);
-
-        // CACHE: Heavy Border Geometric Math
-        if (square.borderLines === undefined) {
-            square.borderLines = [];
+        // CACHE: Heavy Limit Border & Thin Pace Border Math
+        if (
+            square.limitBorderLines === undefined ||
+            square.paceBorderLines === undefined
+        ) {
+            square.limitBorderLines = [];
+            square.paceBorderLines = [];
+            square.anchorBorderLines = [];
 
             if (square.gridType === CONST.GRID_TYPES.SQUARE) {
                 const x = square.x,
                     y = square.y,
                     w = square.w,
                     h = square.h;
-                const top = squareMap.get(
-                    `${Math.round(x)}.${Math.round(y - h)}`,
-                );
-                const bottom = squareMap.get(
-                    `${Math.round(x)}.${Math.round(y + h)}`,
-                );
-                const left = squareMap.get(
-                    `${Math.round(x - w)}.${Math.round(y)}`,
-                );
-                const right = squareMap.get(
-                    `${Math.round(x + w)}.${Math.round(y)}`,
-                );
 
-                if (!top || !top.isInnerZone)
-                    square.borderLines.push({ x1: x, y1: y, x2: x + w, y2: y });
-                if (!bottom || !bottom.isInnerZone)
-                    square.borderLines.push({
-                        x1: x,
-                        y1: y + h,
-                        x2: x + w,
-                        y2: y + h,
-                    });
-                if (!left || !left.isInnerZone)
-                    square.borderLines.push({ x1: x, y1: y, x2: x, y2: y + h });
-                if (!right || !right.isInnerZone)
-                    square.borderLines.push({
-                        x1: x + w,
-                        y1: y,
-                        x2: x + w,
-                        y2: y + h,
-                    });
+                const neighbors = [
+                    {
+                        dir: "top",
+                        data: squareMap.get(
+                            `${Math.round(x)}.${Math.round(y - h)}`,
+                        ),
+                        line: { x1: x, y1: y, x2: x + w, y2: y },
+                    },
+                    {
+                        dir: "bottom",
+                        data: squareMap.get(
+                            `${Math.round(x)}.${Math.round(y + h)}`,
+                        ),
+                        line: { x1: x, y1: y + h, x2: x + w, y2: y + h },
+                    },
+                    {
+                        dir: "left",
+                        data: squareMap.get(
+                            `${Math.round(x - w)}.${Math.round(y)}`,
+                        ),
+                        line: { x1: x, y1: y, x2: x, y2: y + h },
+                    },
+                    {
+                        dir: "right",
+                        data: squareMap.get(
+                            `${Math.round(x + w)}.${Math.round(y)}`,
+                        ),
+                        line: { x1: x + w, y1: y, x2: x + w, y2: y + h },
+                    },
+                ];
+
+                for (const n of neighbors) {
+                    const nIsInner = n.data ? n.data.isInnerZone : false;
+                    const isLimitBoundary = square.isInnerZone !== nIsInner;
+
+                    // 1. Limit Boundary (Only the inside square draws it to prevent double-thickness)
+                    if (square.isInnerZone && !nIsInner) {
+                        square.limitBorderLines.push(n.line);
+                    }
+
+                    // 2. Pace Boundary (Draw if paces are different, BUT skip if it's a Limit Boundary)
+                    if (!n.data || n.data.paceName !== square.paceName) {
+                        if (!isLimitBoundary) {
+                            square.paceBorderLines.push(n.line);
+                        }
+                    }
+
+                    // 3. Anchor Boundary (Only the inside square draws it)
+                    if (square.isAnchor && (!n.data || !n.data.isAnchor)) {
+                        square.anchorBorderLines.push(n.line);
+                    }
+                }
             } else {
+                // HEX GRID EDGE DETECTION
                 const vertices = canvas.grid.getVertices({
                     i: square.i,
                     j: square.j,
                 });
-                const neighbors = canvas.grid.getAdjacentOffsets({
+                const hexNeighbors = canvas.grid.getAdjacentOffsets({
                     i: square.i,
                     j: square.j,
                 });
@@ -251,7 +275,7 @@ function _drawGridHighlight(token, squareMap, settings) {
                         let closestNeighbor = null;
                         let minDst = Infinity;
 
-                        for (const n of neighbors) {
+                        for (const n of hexNeighbors) {
                             const nCenter = canvas.grid.getCenterPoint({
                                 i: n.i,
                                 j: n.j,
@@ -274,13 +298,40 @@ function _drawGridHighlight(token, squareMap, settings) {
                             const nKey = `${Math.round(nTopLeft.x)}.${Math.round(nTopLeft.y)}`;
                             const neighborData = squareMap.get(nKey);
 
-                            if (!neighborData || !neighborData.isInnerZone) {
-                                square.borderLines.push({
-                                    x1: p1.x,
-                                    y1: p1.y,
-                                    x2: p2.x,
-                                    y2: p2.y,
-                                });
+                            const lineSegment = {
+                                x1: p1.x,
+                                y1: p1.y,
+                                x2: p2.x,
+                                y2: p2.y,
+                            };
+
+                            const nIsInner = neighborData
+                                ? neighborData.isInnerZone
+                                : false;
+                            const isLimitBoundary =
+                                square.isInnerZone !== nIsInner;
+
+                            // 1. Limit Boundary
+                            if (square.isInnerZone && !nIsInner) {
+                                square.limitBorderLines.push(lineSegment);
+                            }
+
+                            // 2. Pace Boundary
+                            if (
+                                !neighborData ||
+                                neighborData.paceName !== square.paceName
+                            ) {
+                                if (!isLimitBoundary) {
+                                    square.paceBorderLines.push(lineSegment);
+                                }
+                            }
+
+                            // 3. Anchor Boundary
+                            if (
+                                square.isAnchor &&
+                                (!neighborData || !neighborData.isAnchor)
+                            ) {
+                                square.anchorBorderLines.push(lineSegment);
                             }
                         }
                     }
@@ -288,12 +339,71 @@ function _drawGridHighlight(token, squareMap, settings) {
             }
         }
 
-        // Draw the cached lines instantly without any math
-        for (const line of square.borderLines) {
-            graphics.moveTo(line.x1, line.y1);
-            graphics.lineTo(line.x2, line.y2);
+        // --- DRAWING THE CACHED LINES ---
+
+        // Draw Solid Anchor Borders
+        if (square.anchorBorderLines && square.anchorBorderLines.length > 0) {
+            // Draw a solid 2px line using the user's custom Anchor color!
+            graphics.lineStyle(2, anchorColorInt, 1.0);
+            for (const line of square.anchorBorderLines) {
+                graphics.moveTo(line.x1, line.y1);
+                graphics.lineTo(line.x2, line.y2);
+            }
+        }
+
+        // Draw Thin Pace Borders using a Darkened Pace Color
+        if (square.paceBorderLines && square.paceBorderLines.length > 0) {
+            // CACHE: Calculate a color that is 50% darker than the square's fill
+            if (square.darkPaceColorInt === undefined) {
+                square.darkPaceColorInt = _darkenColor(square.colorInt, 0.5);
+            }
+
+            // Draw a solid, dark 2px line
+            graphics.lineStyle(2, square.darkPaceColorInt, 1.0);
+            for (const line of square.paceBorderLines) {
+                graphics.moveTo(line.x1, line.y1);
+                graphics.lineTo(line.x2, line.y2);
+            }
+        }
+
+        // Draw Thick Limit Borders
+        if (
+            square.isInnerZone &&
+            square.limitBorderLines &&
+            square.limitBorderLines.length > 0
+        ) {
+            // CACHE: Parse the limit color
+            if (square.limitColorInt === undefined) {
+                square.limitColorInt = Color.from(square.limitColor).valueOf();
+            }
+
+            graphics.lineStyle(4, square.limitColorInt, 1.0);
+            for (const line of square.limitBorderLines) {
+                graphics.moveTo(line.x1, line.y1);
+                graphics.lineTo(line.x2, line.y2);
+            }
         }
     }
 
     container.addChild(graphics);
+}
+
+/**
+ * Helper to safely darken a PIXI color integer.
+ * Factor of 0.5 makes it 50% darker.
+ */
+function _darkenColor(colorInt, factor) {
+    const r = Math.max(
+        0,
+        Math.min(255, Math.floor(((colorInt >> 16) & 0xff) * factor)),
+    );
+    const g = Math.max(
+        0,
+        Math.min(255, Math.floor(((colorInt >> 8) & 0xff) * factor)),
+    );
+    const b = Math.max(
+        0,
+        Math.min(255, Math.floor((colorInt & 0xff) * factor)),
+    );
+    return (r << 16) | (g << 8) | b;
 }

@@ -613,7 +613,6 @@ function processResults(
     const limitColor = limitPace ? limitPace.color : "#FFFFFF";
 
     for (const [key, cost] of minCosts) {
-        if (cost === 0) continue;
         const [i, j] = key.split(".").map(Number);
 
         let bestPace = null;
@@ -657,6 +656,7 @@ function processResults(
                     isInnerZone,
                     limitColor,
                     isSafe: isSafe,
+                    isAnchor: cost === 0,
                 },
             );
         }

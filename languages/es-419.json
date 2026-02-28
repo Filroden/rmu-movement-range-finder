@@ -24,5 +24,6 @@
     "RMU_MRF.paces.Jog": "Trotar",
     "RMU_MRF.paces.Run": "Correr",
     "RMU_MRF.paces.Sprint": "Esprintar",
-    "RMU_MRF.paces.Dash": "Cargar"
+    "RMU_MRF.paces.Dash": "Cargar",
+    "RMU_MRF.paces.Anchor": "Ancla"
 }

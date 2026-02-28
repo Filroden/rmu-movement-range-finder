@@ -24,5 +24,6 @@
     "RMU_MRF.paces.Jog": "Trotter",
     "RMU_MRF.paces.Run": "Courir",
     "RMU_MRF.paces.Sprint": "Sprinter",
-    "RMU_MRF.paces.Dash": "Foncer"
+    "RMU_MRF.paces.Dash": "Foncer",
+    "RMU_MRF.paces.Anchor": "Ancre"
 }

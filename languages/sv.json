@@ -24,5 +24,6 @@
     "RMU_MRF.paces.Jog": "Jogga",
     "RMU_MRF.paces.Run": "Springa",
     "RMU_MRF.paces.Sprint": "Spurta",
-    "RMU_MRF.paces.Dash": "Rusa"
+    "RMU_MRF.paces.Dash": "Rusa",
+    "RMU_MRF.paces.Anchor": "Ankare"
 }
