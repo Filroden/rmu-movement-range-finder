@@ -23,5 +23,11 @@
     "RMU_MRF.paces.Run": "Springa",
     "RMU_MRF.paces.Sprint": "Spurta",
     "RMU_MRF.paces.Dash": "Rusa",
-    "RMU_MRF.paces.Anchor": "Ankare"
+    "RMU_MRF.paces.Anchor": "Ankare",
+    "RMU_MRF.settings.showHoverPath.name": "Aktivera ruttspårare vid hovring",
+    "RMU_MRF.settings.showHoverPath.hint": "Ritar en linje som visar den exakta rutten som tagits för att nå det hovrade området. Kan växlas via snabbtangent.",
+    "RMU_MRF.keybindings.toggleHoverPath.name": "Växla ruttspårare vid hovring",
+    "RMU_MRF.keybindings.toggleHoverPath.hint": "Visar eller döljer ruttens spårlinje på rörelseöverlägget.",
+    "RMU_MRF.notifications.hoverEnabled": "RMU Hovringsrutt: Aktiverad",
+    "RMU_MRF.notifications.hoverDisabled": "RMU Hovringsrutt: Inaktiverad"
 }

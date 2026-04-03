@@ -23,5 +23,11 @@
     "RMU_MRF.paces.Run": "Courir",
     "RMU_MRF.paces.Sprint": "Sprinter",
     "RMU_MRF.paces.Dash": "Foncer",
-    "RMU_MRF.paces.Anchor": "Ancre"
+    "RMU_MRF.paces.Anchor": "Ancre",
+    "RMU_MRF.settings.showHoverPath.name": "Activer le traceur de chemin au survol",
+    "RMU_MRF.settings.showHoverPath.hint": "Dessine une ligne montrant l'itinéraire exact emprunté pour atteindre la zone survolée. Peut être basculé via un raccourci clavier.",
+    "RMU_MRF.keybindings.toggleHoverPath.name": "Basculer le traceur de chemin au survol",
+    "RMU_MRF.keybindings.toggleHoverPath.hint": "Affiche ou masque la ligne de tracé du chemin sur la superposition de mouvement.",
+    "RMU_MRF.notifications.hoverEnabled": "Chemin de survol RMU : Activé",
+    "RMU_MRF.notifications.hoverDisabled": "Chemin de survol RMU : Désactivé"
 }

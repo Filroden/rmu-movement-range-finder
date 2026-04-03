@@ -26,11 +26,7 @@ export function clearOverlay() {
         container._rmuHoverListener = null;
     }
 
-    const toRemove = container.children.filter(
-        (c) =>
-            c.name === "rmuMovementGraphics" ||
-            c.name === "rmuMovementHoverLayer",
-    );
+    const toRemove = container.children.filter((c) => c.name === "rmuMovementGraphics" || c.name === "rmuMovementHoverLayer");
 
     toRemove.forEach((c) => {
         c.removeChildren();
@@ -65,9 +61,7 @@ function _drawGridHighlight(token, squareMap, settings) {
         // We use squareMap.values().next().value.w to safely grab the micro-grid size
         const sampleSquare = squareMap.values().next().value;
         if (sampleSquare) {
-            microGridRatio = Math.floor(
-                canvas.scene.grid.size / sampleSquare.w,
-            );
+            microGridRatio = Math.floor(canvas.scene.grid.size / sampleSquare.w);
             if (microGridRatio < 1) microGridRatio = 1;
         }
     }
@@ -95,10 +89,7 @@ function _drawGridHighlight(token, squareMap, settings) {
                 x: square.centerX,
                 y: square.centerY,
             });
-            const isVisible = canvas.visibility.testVisibility(
-                { x: square.centerX, y: square.centerY },
-                { object: token },
-            );
+            const isVisible = canvas.visibility.testVisibility({ x: square.centerX, y: square.centerY }, { object: token });
 
             square.isHiddenByFog = !isExplored && !isVisible;
             if (square.isHiddenByFog) continue;
@@ -110,9 +101,7 @@ function _drawGridHighlight(token, squareMap, settings) {
             square.colorInt = Color.from(square.color).valueOf();
         }
 
-        const drawOpacity = square.isSafe
-            ? settings.opacity
-            : settings.opacity * 0.4;
+        const drawOpacity = square.isSafe ? settings.opacity : settings.opacity * 0.4;
 
         if (square.isAnchor) {
             graphics.beginFill(anchorColorInt, settings.opacity);
@@ -135,8 +124,7 @@ function _drawGridHighlight(token, squareMap, settings) {
                 });
                 square.flatVertices = [];
                 if (vertices) {
-                    for (const p of vertices)
-                        square.flatVertices.push(p.x, p.y);
+                    for (const p of vertices) square.flatVertices.push(p.x, p.y);
                 }
             }
             if (square.flatVertices.length > 0) {
@@ -153,10 +141,7 @@ function _drawGridHighlight(token, squareMap, settings) {
         if (square.isHiddenByFog) continue;
 
         // CACHE: Heavy Limit Border & Thin Pace Border Math
-        if (
-            square.limitBorderLines === undefined ||
-            square.paceBorderLines === undefined
-        ) {
+        if (square.limitBorderLines === undefined || square.paceBorderLines === undefined) {
             square.limitBorderLines = [];
             square.paceBorderLines = [];
             square.anchorBorderLines = [];
@@ -170,30 +155,22 @@ function _drawGridHighlight(token, squareMap, settings) {
                 const neighbors = [
                     {
                         dir: "top",
-                        data: squareMap.get(
-                            `${Math.round(x)}.${Math.round(y - h)}`,
-                        ),
+                        data: squareMap.get(`${Math.round(x)}.${Math.round(y - h)}`),
                         line: { x1: x, y1: y, x2: x + w, y2: y },
                     },
                     {
                         dir: "bottom",
-                        data: squareMap.get(
-                            `${Math.round(x)}.${Math.round(y + h)}`,
-                        ),
+                        data: squareMap.get(`${Math.round(x)}.${Math.round(y + h)}`),
                         line: { x1: x, y1: y + h, x2: x + w, y2: y + h },
                     },
                     {
                         dir: "left",
-                        data: squareMap.get(
-                            `${Math.round(x - w)}.${Math.round(y)}`,
-                        ),
+                        data: squareMap.get(`${Math.round(x - w)}.${Math.round(y)}`),
                         line: { x1: x, y1: y, x2: x, y2: y + h },
                     },
                     {
                         dir: "right",
-                        data: squareMap.get(
-                            `${Math.round(x + w)}.${Math.round(y)}`,
-                        ),
+                        data: squareMap.get(`${Math.round(x + w)}.${Math.round(y)}`),
                         line: { x1: x + w, y1: y, x2: x + w, y2: y + h },
                     },
                 ];
@@ -245,10 +222,7 @@ function _drawGridHighlight(token, squareMap, settings) {
                                 i: n.i,
                                 j: n.j,
                             });
-                            const d = Math.hypot(
-                                nCenter.x - midX,
-                                nCenter.y - midY,
-                            );
+                            const d = Math.hypot(nCenter.x - midX, nCenter.y - midY);
                             if (d < minDst) {
                                 minDst = d;
                                 closestNeighbor = n;
@@ -270,11 +244,8 @@ function _drawGridHighlight(token, squareMap, settings) {
                                 y2: p2.y,
                             };
 
-                            const nIsInner = neighborData
-                                ? neighborData.isInnerZone
-                                : false;
-                            const isLimitBoundary =
-                                square.isInnerZone !== nIsInner;
+                            const nIsInner = neighborData ? neighborData.isInnerZone : false;
+                            const isLimitBoundary = square.isInnerZone !== nIsInner;
 
                             // 1. Limit Boundary
                             if (square.isInnerZone && !nIsInner) {
@@ -282,20 +253,14 @@ function _drawGridHighlight(token, squareMap, settings) {
                             }
 
                             // 2. Pace Boundary
-                            if (
-                                !neighborData ||
-                                neighborData.paceName !== square.paceName
-                            ) {
+                            if (!neighborData || neighborData.paceName !== square.paceName) {
                                 if (!isLimitBoundary) {
                                     square.paceBorderLines.push(lineSegment);
                                 }
                             }
 
                             // 3. Anchor Boundary
-                            if (
-                                square.isAnchor &&
-                                (!neighborData || !neighborData.isAnchor)
-                            ) {
+                            if (square.isAnchor && (!neighborData || !neighborData.isAnchor)) {
                                 square.anchorBorderLines.push(lineSegment);
                             }
                         }
@@ -332,11 +297,7 @@ function _drawGridHighlight(token, squareMap, settings) {
         }
 
         // Draw Thick Limit Borders
-        if (
-            square.isInnerZone &&
-            square.limitBorderLines &&
-            square.limitBorderLines.length > 0
-        ) {
+        if (square.isInnerZone && square.limitBorderLines && square.limitBorderLines.length > 0) {
             // CACHE: Parse the limit color
             if (square.limitColorInt === undefined) {
                 square.limitColorInt = Color.from(square.limitColor).valueOf();
@@ -407,21 +368,30 @@ function _drawGridHighlight(token, squareMap, settings) {
             return;
         }
 
-        // 1. Trace the breadcrumbs back to the Anchor
-        const pathPoints = [];
-        let curr = hoveredSquare;
-        while (curr) {
-            pathPoints.push({ x: curr.centerX, y: curr.centerY });
-            if (curr.isAnchor) break;
-            curr = squareMap.get(curr.parentKey);
-        }
+        // 1 & 2. Trace and draw the breadcrumbs ONLY if the setting is enabled
+        if (settings.showHoverPath) {
+            const pathPoints = [];
+            let curr = hoveredSquare;
+            const visitedKeys = new Set();
 
-        // 2. Draw the path line (Thick, bright white with a slight transparency)
-        if (pathPoints.length > 1) {
-            hoverPath.lineStyle(6, 0xffffff, 0.7);
-            hoverPath.moveTo(pathPoints[0].x, pathPoints[0].y);
-            for (let i = 1; i < pathPoints.length; i++) {
-                hoverPath.lineTo(pathPoints[i].x, pathPoints[i].y);
+            while (curr) {
+                pathPoints.push({ x: curr.centerX, y: curr.centerY });
+                if (curr.isAnchor) break;
+
+                if (visitedKeys.has(curr.parentKey)) {
+                    console.warn("RMU MRF: Prevented an infinite loop while drawing the hover path.");
+                    break;
+                }
+                visitedKeys.add(curr.parentKey);
+                curr = squareMap.get(curr.parentKey);
+            }
+
+            if (pathPoints.length > 1) {
+                hoverPath.lineStyle(6, 0xffffff, 0.7);
+                hoverPath.moveTo(pathPoints[0].x, pathPoints[0].y);
+                for (let i = 1; i < pathPoints.length; i++) {
+                    hoverPath.lineTo(pathPoints[i].x, pathPoints[i].y);
+                }
             }
         }
 
@@ -433,10 +403,7 @@ function _drawGridHighlight(token, squareMap, settings) {
 
         // 4. Update and position the large tooltip text
         hoverText.text = `${parseFloat(hoveredSquare.cost.toFixed(1))} ${gridUnit}`;
-        hoverText.position.set(
-            hoveredSquare.centerX,
-            hoveredSquare.centerY - 15,
-        );
+        hoverText.position.set(hoveredSquare.centerX, hoveredSquare.centerY - 15);
         hoverText.visible = true;
     };
 
@@ -449,17 +416,8 @@ function _drawGridHighlight(token, squareMap, settings) {
  * Factor of 0.5 makes it 50% darker.
  */
 function _darkenColor(colorInt, factor) {
-    const r = Math.max(
-        0,
-        Math.min(255, Math.floor(((colorInt >> 16) & 0xff) * factor)),
-    );
-    const g = Math.max(
-        0,
-        Math.min(255, Math.floor(((colorInt >> 8) & 0xff) * factor)),
-    );
-    const b = Math.max(
-        0,
-        Math.min(255, Math.floor((colorInt & 0xff) * factor)),
-    );
+    const r = Math.max(0, Math.min(255, Math.floor(((colorInt >> 16) & 0xff) * factor)));
+    const g = Math.max(0, Math.min(255, Math.floor(((colorInt >> 8) & 0xff) * factor)));
+    const b = Math.max(0, Math.min(255, Math.floor((colorInt & 0xff) * factor)));
     return (r << 16) | (g << 8) | b;
 }
