@@ -10,6 +10,7 @@ export const MODULE_ID = "rmu-movement-range-finder";
 
 // --- CONSTANTS ---
 const SETTING_ENABLED = "enabled";
+const SETTING_SHOW_HOVER_PATH = "showHoverPath";
 const SETTING_ROUNDING = "roundingMode";
 const SETTING_OPACITY = "opacity";
 
@@ -45,9 +46,7 @@ export function registerSettings() {
             const current = game.settings.get(MODULE_ID, SETTING_ENABLED);
             game.settings.set(MODULE_ID, SETTING_ENABLED, !current);
             const newState = !current;
-            const message = newState
-                ? game.i18n.localize("RMU_MRF.notifications.enabled")
-                : game.i18n.localize("RMU_MRF.notifications.disabled");
+            const message = newState ? game.i18n.localize("RMU_MRF.notifications.enabled") : game.i18n.localize("RMU_MRF.notifications.disabled");
             ui.notifications.info(message);
         },
         restricted: false,
@@ -61,6 +60,21 @@ export function registerSettings() {
         editable: [{ key: "KeyM", modifiers: ["Control"] }], // Ctrl + M
         onDown: () => {
             Hooks.callAll("rmuMRFResetAnchor");
+        },
+        restricted: false,
+        precedence: CONST.KEYBINDING_PRECEDENCE.NORMAL,
+    });
+
+    // Toggle Hover Path Keybinding
+    game.keybindings.register(MODULE_ID, "toggleHoverPath", {
+        name: game.i18n.localize("RMU_MRF.keybindings.toggleHoverPath.name"),
+        hint: game.i18n.localize("RMU_MRF.keybindings.toggleHoverPath.hint"),
+        editable: [{ key: "KeyP" }], // P
+        onDown: () => {
+            const current = game.settings.get(MODULE_ID, SETTING_SHOW_HOVER_PATH);
+            game.settings.set(MODULE_ID, SETTING_SHOW_HOVER_PATH, !current);
+            const message = !current ? game.i18n.localize("RMU_MRF.notifications.hoverEnabled") : game.i18n.localize("RMU_MRF.notifications.hoverDisabled");
+            ui.notifications.info(message);
         },
         restricted: false,
         precedence: CONST.KEYBINDING_PRECEDENCE.NORMAL,
@@ -90,20 +104,24 @@ export function registerSettings() {
         type: String,
         default: "full",
         choices: {
-            any: game.i18n.localize(
-                "RMU_MRF.settings.movementRounding.choices.any",
-            ),
-            half: game.i18n.localize(
-                "RMU_MRF.settings.movementRounding.choices.half",
-            ),
-            full: game.i18n.localize(
-                "RMU_MRF.settings.movementRounding.choices.full",
-            ),
+            any: game.i18n.localize("RMU_MRF.settings.movementRounding.choices.any"),
+            half: game.i18n.localize("RMU_MRF.settings.movementRounding.choices.half"),
+            full: game.i18n.localize("RMU_MRF.settings.movementRounding.choices.full"),
         },
         onChange: refreshOverlay,
     });
 
     // 3. Visual Settings
+    game.settings.register(MODULE_ID, SETTING_SHOW_HOVER_PATH, {
+        name: game.i18n.localize("RMU_MRF.settings.showHoverPath.name"),
+        hint: game.i18n.localize("RMU_MRF.settings.showHoverPath.hint"),
+        scope: "client",
+        config: true,
+        type: Boolean,
+        default: false,
+        onChange: refreshOverlay,
+    });
+
     game.settings.register(MODULE_ID, SETTING_OPACITY, {
         name: game.i18n.localize("RMU_MRF.settings.overlayOpacity.name"),
         hint: game.i18n.localize("RMU_MRF.settings.overlayOpacity.hint"),
@@ -142,15 +160,7 @@ export function registerSettings() {
 Hooks.on("renderSettingsConfig", (app, html, data) => {
     const $html = $(html);
 
-    const colorSettings = [
-        SETTING_COLOR_ANCHOR,
-        SETTING_COLOR_CREEP,
-        SETTING_COLOR_WALK,
-        SETTING_COLOR_JOG,
-        SETTING_COLOR_RUN,
-        SETTING_COLOR_SPRINT,
-        SETTING_COLOR_DASH,
-    ];
+    const colorSettings = [SETTING_COLOR_ANCHOR, SETTING_COLOR_CREEP, SETTING_COLOR_WALK, SETTING_COLOR_JOG, SETTING_COLOR_RUN, SETTING_COLOR_SPRINT, SETTING_COLOR_DASH];
 
     colorSettings.forEach((key) => {
         const settingName = `${MODULE_ID}.${key}`;
@@ -158,9 +168,7 @@ Hooks.on("renderSettingsConfig", (app, html, data) => {
 
         if (input.length) {
             // 1. Inject Colour Picker
-            const picker = $(
-                `<input type="color" style="margin-left: 5px; max-width: 40px; height: 26px; border: none; padding: 0; background: none; cursor: pointer;">`,
-            );
+            const picker = $(`<input type="color" style="margin-left: 5px; max-width: 40px; height: 26px; border: none; padding: 0; background: none; cursor: pointer;">`);
             picker.val(input.val());
             picker.on("change", (e) => input.val(e.target.value));
             input.on("change", (e) => picker.val(e.target.value));
@@ -169,13 +177,8 @@ Hooks.on("renderSettingsConfig", (app, html, data) => {
 
             // 2. Label Formatting
             const paceName = key.replace("color", "");
-            const localizedPace = game.i18n.localize(
-                `RMU_MRF.paces.${paceName}`,
-            );
-            const correctLabel = game.i18n.format(
-                "RMU_MRF.settings.colorPace",
-                { pace: localizedPace },
-            );
+            const localizedPace = game.i18n.localize(`RMU_MRF.paces.${paceName}`);
+            const correctLabel = game.i18n.format("RMU_MRF.settings.colorPace", { pace: localizedPace });
 
             // Find the label element in the form group and update text
             const formGroup = input.closest(".form-group");
@@ -192,6 +195,7 @@ export function getVisualSettings() {
     return {
         enabled: game.settings.get(MODULE_ID, SETTING_ENABLED),
         opacity: game.settings.get(MODULE_ID, SETTING_OPACITY),
+        showHoverPath: game.settings.get(MODULE_ID, SETTING_SHOW_HOVER_PATH),
         colors: {
             Anchor: game.settings.get(MODULE_ID, SETTING_COLOR_ANCHOR),
             Creep: game.settings.get(MODULE_ID, SETTING_COLOR_CREEP),

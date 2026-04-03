@@ -1,6 +1,6 @@
 # RMU Movement Range Finder
 
-![Latest Version](https://img.shields.io/badge/Version-1.4.1-blue)
+![Latest Version](https://img.shields.io/badge/Version-1.4.2-blue)
 ![Foundry Version](https://img.shields.io/badge/Foundry-v13-orange)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 ![System](https://img.shields.io/badge/System-RMU-blue)
@@ -34,6 +34,7 @@ It features an **"Anchor & Scout"** system that allows players to move their tok
 1. **Toggle Visibility:** Press `M` (default hotkey) to toggle the overlay on or off.
 2. **Create a new Anchor:** Select a Token and press `Ctrl + M` (default hotkey). This will "anchor" the token's starting position.
 3. **Move:** Move your token along the path you wish to take. The overlay will remain anchored to your starting point. You will reveal new areas as your token's vision moves or as doors open. Press `Ctrl + M` again whenever you want to lock in a new anchor point.
+4. **Show/Hide Interactive Path Tooltip:** Press `P` to toggle on/off a path tooltip that shows the route used to get to the point under your cursor.
 
 ## Game settings
 
@@ -52,16 +53,9 @@ To prevent this module from revealing parts of the map that players should not s
 
 **If these are disabled, the module may draw the movement grid in unexplored/hidden rooms.**
 
-## Installation
-
-1. In Foundry VTT, go to the **Add-on Modules** tab.
-2. Click **Install Module**.
-3. Search for "RMU Movement Range Finder" or paste the manifest URL:
-    `https://github.com/Filroden/rmu-movement-range-finder/releases/latest/download/module.json`
-
 ## Compatibility
 
-* **Foundry VTT:** Version 13+ is required.
+* **Foundry VTT:** Version 13 is required.
 * **System:** Designed for *Rolemaster Unified* (RMU).
 
 ## License
