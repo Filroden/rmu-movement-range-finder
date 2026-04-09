@@ -9,7 +9,7 @@
 ![Last Commit](https://img.shields.io/github/last-commit/Filroden/rmu-movement-range-finder)
 ![Issues](https://img.shields.io/github/issues/Filroden/rmu-movement-range-finder)
 
-**RMU Movement Range Finder** is a tactical aid for the *Rolemaster Unified* (RMU) system that visualises movement for gridless, square, and hex maps. It calculates exactly how far a token can move based on their Base Movement Rate and the map's terrain, routeing around walls and obstacles, and moving up and down stairs and through teleports within scene levels.
+**RMU Movement Range Finder** is a tactical aid for the *Rolemaster Unified* (RMU) system that visualises movement for gridless, square, and hex maps. It calculates exactly how far a token can move based on their Base Movement Rate and the map's terrain, routeing around walls and obstacles, and moving up and down stairs within scene levels.
 
 It highlights the movement area using colour-graduated cells based on RMU's movement paces (`Walk`, `Run`, `Sprint`, etc.) to help determine pace penalties when moving while acting.
 

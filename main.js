@@ -12,11 +12,7 @@
 
 import { calculateReachableSquares } from "./src/rmu-mrf-pathfinding.js";
 import { drawOverlay, clearOverlay } from "./src/rmu-mrf-renderer.js";
-import {
-    registerSettings,
-    getVisualSettings,
-    MODULE_ID,
-} from "./src/rmu-mrf-settings.js";
+import { registerSettings, getVisualSettings, MODULE_ID } from "./src/rmu-mrf-settings.js";
 import { getMovementPaces } from "./src/rmu-mrf-calculator.js";
 
 const VALID_ACTOR_TYPES = ["Character", "Creature"];
@@ -89,12 +85,7 @@ Hooks.on("deleteToken", (document) => {
 });
 
 Hooks.on("updateScene", (document, change, options, userId) => {
-    if (
-        change.grid ||
-        change.gridType ||
-        change.gridDistance ||
-        change.gridUnits
-    ) {
+    if (change.grid || change.gridType || change.gridDistance || change.gridUnits) {
         _anchorCache.clear(); // Grid changed, all old anchors are invalid
         triggerUpdate(true);
     }
@@ -181,8 +172,12 @@ function triggerUpdate(forceRecalc) {
 
     const startTime = performance.now();
 
+    // DYNAMIC VIEW ELEVATION TRACKING
+    // Reads the active render slice elevation directly from the primary canvas group
+    const dynamicViewZ = canvas.primary?.background?.elevation ?? token.document?.elevation ?? 0;
+
     // Calculate (Square, Hex, or Synthetic Gridless)
-    const dataToRender = calculateReachableSquares(token, paces, anchor);
+    const dataToRender = calculateReachableSquares(token, paces, anchor, dynamicViewZ);
 
     _cachedData.result = dataToRender;
 
@@ -190,7 +185,5 @@ function triggerUpdate(forceRecalc) {
 
     // --- END TIMER ---
     const endTime = performance.now();
-    console.log(
-        `RMU MRF | Pathfinding & Render took ${(endTime - startTime).toFixed(2)} ms`,
-    );
+    console.log(`RMU MRF | Pathfinding & Render took ${(endTime - startTime).toFixed(2)} ms`);
 }
