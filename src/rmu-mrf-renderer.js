@@ -352,7 +352,13 @@ function _drawGridHighlight(token, squareMap, settings) {
 
         // Figure out exactly which cell the mouse is currently hovering over
         if (isGridless) {
-            const res = squareMap.values().next().value.w;
+            const sampleSquare = squareMap.values().next().value;
+            // Ensure the map actually contains squares before extracting resolution
+            if (!sampleSquare) {
+                hoverText.visible = false;
+                return;
+            }
+            const res = sampleSquare.w;
             const i = Math.floor(local.x / res);
             const j = Math.floor(local.y / res);
             hoverKey = `${Math.round(i * res)}.${Math.round(j * res)}`;

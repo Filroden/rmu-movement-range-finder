@@ -10,7 +10,7 @@ const FT_PER_METER = 3.33333;
 
 const globalPortalCache = new Map();
 
-export function calculateReachableSquares(token, movementPaces, originOverride = null, trackedViewZ = 0) {
+export function calculateReachableSquares(token, movementPaces, originOverride = null, trackedViewZ = 0, forceRecalc = false) {
     if (!token?.actor || !movementPaces || movementPaces.length === 0) return new Map();
 
     const grid = canvas.grid;
@@ -33,12 +33,17 @@ export function calculateReachableSquares(token, movementPaces, originOverride =
     const wallCheckCache = new Map();
 
     // ---------------------------------------------------------
-    // PHASE 1: GUARANTEED CACHE GENERATION
+    // PHASE 1: NATIVE FLOOR CACHING
     // ---------------------------------------------------------
     let cacheData = globalPortalCache.get(token.id);
 
-    // Rebuild cache if token changes its absolute floor OR moves horizontally
-    if (!cacheData || cacheData.nativeZ !== tokenZ || cacheData.x !== startX || cacheData.y !== startY) {
+    const tokenHasMoved = !cacheData || cacheData.nativeZ !== tokenZ || cacheData.x !== startX || cacheData.y !== startY;
+
+    // Only allow wall-updates (forceRecalc) to wipe the native cache IF we are actively viewing the native floor.
+    // If we recalculate the native floor while viewing a different floor, Foundry tests the native paths against the wrong walls!
+    const shouldRecalcNative = tokenHasMoved || (forceRecalc && viewZ === tokenZ);
+
+    if (shouldRecalcNative) {
         const nativeResults = _runAlgorithm(grid, token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, tokenZ, regionCache);
         _cacheReachablePortals(token.id, startX, startY, nativeResults, regionCache, tokenZ);
         cacheData = globalPortalCache.get(token.id);
@@ -50,10 +55,11 @@ export function calculateReachableSquares(token, movementPaces, originOverride =
     // PHASE 2: RENDERER ROUTING
     // ---------------------------------------------------------
     if (viewZ === tokenZ) {
+        // If we are on the native floor but didn't trigger a native cache rebuild (e.g. standard hover refresh)
         return _runAlgorithm(grid, token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, viewZ, regionCache);
     } else {
         const seeds = _getSeedsForView(token.id, viewZ, scaledPaces);
-        if (!seeds || seeds.length === 0) return new Map(); // Fails safely if no stairs reach this floor
+        if (!seeds || seeds.length === 0) return new Map();
 
         return _runAlgorithm(grid, token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, viewZ, regionCache, seeds);
     }
@@ -111,8 +117,7 @@ function _buildRegionCache() {
  */
 function _hasFloorAt(x, y, targetZ, regionCache) {
     // Determine which V14 Level exists at this specific elevation
-    const activeLevel = canvas.scene.levels.find((l) => targetZ >= l.elevation.bottom && targetZ < l.elevation.top);
-    const activeLevelId = activeLevel?.id;
+    const activeLevelId = _getActiveLevelId(targetZ);
 
     // 1. Check Defined Surfaces (Floors)
     for (const s of regionCache.surfaces) {
@@ -146,10 +151,13 @@ function _cacheReachablePortals(tokenId, startX, startY, resultMap, regionCache,
     const reachablePortals = [];
 
     // Apply the strict exclusive-top level checking here
-    const nativeLevelId = canvas.scene.levels.find((l) => currentZ >= l.elevation.bottom && currentZ < l.elevation.top)?.id;
+    const nativeLevelId = _getActiveLevelId(currentZ);
 
     for (const [key, square] of resultMap.entries()) {
-        const center = canvas.grid.getCenterPoint({ i: square.i, j: square.j });
+        // Calculate center geometrically to support Gridless synthetic squares
+        const centerX = square.x + square.w / 2;
+        const centerY = square.y + square.h / 2;
+
         for (const portal of regionCache.portals) {
             let levelMatch = false;
             if (nativeLevelId && portal.levels?.length) {
@@ -159,7 +167,7 @@ function _cacheReachablePortals(tokenId, startX, startY, resultMap, regionCache,
             }
 
             // Use currentZ instead of portal's bottom value to validate geometry correctly
-            if (levelMatch && portal.doc.testPoint({ x: center.x, y: center.y, elevation: currentZ })) {
+            if (levelMatch && portal.doc.testPoint({ x: centerX, y: centerY, z: currentZ, elevation: currentZ })) {
                 // MUTATE NATIVE MAP: Flag this square as a portal for native floor rendering
                 square.isPortal = true;
 
@@ -168,8 +176,11 @@ function _cacheReachablePortals(tokenId, startX, startY, resultMap, regionCache,
                 let pathSq = square;
                 const visited = new Set();
                 while (pathSq) {
-                    const pCenter = canvas.grid.getCenterPoint({ i: pathSq.i, j: pathSq.j });
-                    pathToPortal.push({ x: pCenter.x, y: pCenter.y });
+                    // FIX: Ensure the historical path also respects geometric centers
+                    const pCenterX = pathSq.x + pathSq.w / 2;
+                    const pCenterY = pathSq.y + pathSq.h / 2;
+                    pathToPortal.push({ x: pCenterX, y: pCenterY });
+
                     if (pathSq.isAnchor || visited.has(pathSq.parentKey)) break;
                     visited.add(pathSq.parentKey);
                     pathSq = resultMap.get(pathSq.parentKey);
@@ -206,8 +217,8 @@ function _getSeedsForView(tokenId, viewZ, scaledPaces) {
     const maxSearchLimit = Math.max(...scaledPaces.map((p) => p.distance)) + costPerGridUnit;
 
     // Get Level IDs for the token's floor and the floor the GM/User is currently viewing
-    const nativeLevelId = canvas.scene.levels.find((l) => cacheData.nativeZ >= l.elevation.bottom && cacheData.nativeZ < l.elevation.top)?.id;
-    const viewLevelId = canvas.scene.levels.find((l) => viewZ >= l.elevation.bottom && viewZ < l.elevation.top)?.id;
+    const nativeLevelId = _getActiveLevelId(cacheData.nativeZ);
+    const viewLevelId = _getActiveLevelId(viewZ);
 
     for (const p of cacheData.portals) {
         let isReachable = false;
@@ -492,7 +503,9 @@ function _createSyntheticGrid(resolutionPx, distancePerCell) {
 // --- HELPERS ---
 
 function checkCellStrict(originPt, destPt, wallCheckCache) {
-    const cacheKey = `${Math.round(originPt.x)},${Math.round(originPt.y)}->${Math.round(destPt.x)},${Math.round(destPt.y)}`;
+    // FIX: Include elevation in the signature to prevent 2D floor-bleed
+    const cacheKey = `${Math.round(originPt.x)},${Math.round(originPt.y)},${Math.round(originPt.elevation)}->${Math.round(destPt.x)},${Math.round(destPt.y)},${Math.round(destPt.elevation)}`;
+
     let isClear = wallCheckCache.get(cacheKey);
     if (isClear === undefined) {
         isClear = !CONFIG.Canvas.polygonBackends.move.testCollision(originPt, destPt, { type: "move", mode: "any" });
@@ -695,4 +708,15 @@ function _initializeQueue(parents, queue, minCosts, safetyMap, grid, centerPt, s
         if (isTheta) queue.push({ i: centerOffset.i, j: centerOffset.j, cost: 0, losOrigin: startOrigin });
         else queue.push({ i: centerOffset.i, j: centerOffset.j, cost: 0 });
     }
+}
+
+/**
+ * Safely iterates Foundry's level Map to find the active Level ID for a given elevation.
+ */
+function _getActiveLevelId(z) {
+    if (!canvas.scene.levels) return null;
+    for (const l of canvas.scene.levels.values()) {
+        if (z >= l.elevation.bottom && z < l.elevation.top) return l._id || l.id;
+    }
+    return null;
 }

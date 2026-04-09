@@ -32,7 +32,7 @@ let _cachedData = {
     tokenId: null,
     anchor: null,
     result: null,
-    mode: null,
+    viewZ: null,
 };
 
 Hooks.once("init", () => {
@@ -170,16 +170,22 @@ function triggerUpdate(forceRecalc) {
         return;
     }
 
-    const startTime = performance.now();
-
     // DYNAMIC VIEW ELEVATION TRACKING
     // Reads the active render slice elevation directly from the primary canvas group
     const dynamicViewZ = canvas.primary?.background?.elevation ?? token.document?.elevation ?? 0;
 
-    // Calculate (Square, Hex, or Synthetic Gridless)
-    const dataToRender = calculateReachableSquares(token, paces, anchor, dynamicViewZ);
+    // Only use the visual cache if the force flag is false AND we are still looking at the exact same floor
+    if (!forceRecalc && _cachedData.result && _cachedData.viewZ === dynamicViewZ) {
+        drawOverlay(token, _cachedData.result, "grid", anchor);
+        return;
+    }
+
+    const startTime = performance.now();
+
+    const dataToRender = calculateReachableSquares(token, paces, anchor, dynamicViewZ, forceRecalc);
 
     _cachedData.result = dataToRender;
+    _cachedData.viewZ = dynamicViewZ; // Store the floor we just rendered
 
     drawOverlay(token, dataToRender, "grid", anchor);
 
