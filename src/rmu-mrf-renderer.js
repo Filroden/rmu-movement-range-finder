@@ -102,9 +102,12 @@ function _drawGridHighlight(token, squareMap, settings) {
         }
 
         const drawOpacity = square.isSafe ? settings.opacity : settings.opacity * 0.4;
+        const portalColorInt = Color.from(settings.colors.Portal).valueOf(); // FETCH
 
         if (square.isAnchor) {
             graphics.beginFill(anchorColorInt, settings.opacity);
+        } else if (square.isPortal) {
+            graphics.beginFill(portalColorInt, settings.opacity + 0.3); // High visibility fill
         } else {
             graphics.beginFill(square.colorInt, drawOpacity);
         }
@@ -370,13 +373,20 @@ function _drawGridHighlight(token, squareMap, settings) {
 
         // 1 & 2. Trace and draw the breadcrumbs ONLY if the setting is enabled
         if (settings.showHoverPath) {
-            const pathPoints = [];
+            const currentFloorPoints = [];
+            const otherFloorPoints = [];
             let curr = hoveredSquare;
             const visitedKeys = new Set();
 
             while (curr) {
-                pathPoints.push({ x: curr.centerX, y: curr.centerY });
+                currentFloorPoints.push({ x: curr.centerX, y: curr.centerY });
                 if (curr.isAnchor) break;
+
+                // When we hit a portal seed, dump the historical path into the other array
+                if (curr.pathToPortal) {
+                    otherFloorPoints.push(...curr.pathToPortal);
+                    break;
+                }
 
                 if (visitedKeys.has(curr.parentKey)) {
                     console.warn("RMU MRF: Prevented an infinite loop while drawing the hover path.");
@@ -386,11 +396,47 @@ function _drawGridHighlight(token, squareMap, settings) {
                 curr = squareMap.get(curr.parentKey);
             }
 
-            if (pathPoints.length > 1) {
+            // Draw Cross-Floor Path (Dashed)
+            if (otherFloorPoints.length > 0) {
+                // Connect the two path arrays
+                if (currentFloorPoints.length > 0) {
+                    otherFloorPoints.unshift(currentFloorPoints[currentFloorPoints.length - 1]);
+                }
+
+                hoverPath.lineStyle(4, 0xffffff, 0.6);
+
+                // Manual dashed line generation using trigonometry
+                for (let i = 1; i < otherFloorPoints.length; i++) {
+                    const p1 = otherFloorPoints[i - 1];
+                    const p2 = otherFloorPoints[i];
+                    const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+                    const dash = 10;
+                    const gap = 10;
+                    let drawn = 0;
+                    let isDash = true;
+
+                    hoverPath.moveTo(p1.x, p1.y);
+                    while (drawn < dist) {
+                        let step = Math.min(isDash ? dash : gap, dist - drawn);
+                        let pct = (drawn + step) / dist;
+                        let curX = p1.x + (p2.x - p1.x) * pct;
+                        let curY = p1.y + (p2.y - p1.y) * pct;
+
+                        if (isDash) hoverPath.lineTo(curX, curY);
+                        else hoverPath.moveTo(curX, curY);
+
+                        drawn += step;
+                        isDash = !isDash;
+                    }
+                }
+            }
+
+            // Draw Current Floor Path (Solid)
+            if (currentFloorPoints.length > 1) {
                 hoverPath.lineStyle(6, 0xffffff, 0.7);
-                hoverPath.moveTo(pathPoints[0].x, pathPoints[0].y);
-                for (let i = 1; i < pathPoints.length; i++) {
-                    hoverPath.lineTo(pathPoints[i].x, pathPoints[i].y);
+                hoverPath.moveTo(currentFloorPoints[0].x, currentFloorPoints[0].y);
+                for (let i = 1; i < currentFloorPoints.length; i++) {
+                    hoverPath.lineTo(currentFloorPoints[i].x, currentFloorPoints[i].y);
                 }
             }
         }

@@ -160,6 +160,21 @@ function _cacheReachablePortals(tokenId, startX, startY, resultMap, regionCache,
 
             // Use currentZ instead of portal's bottom value to validate geometry correctly
             if (levelMatch && portal.doc.testPoint({ x: center.x, y: center.y, elevation: currentZ })) {
+                // MUTATE NATIVE MAP: Flag this square as a portal for native floor rendering
+                square.isPortal = true;
+
+                // CACHE THE PATH: Build the array of points back to the anchor
+                const pathToPortal = [];
+                let pathSq = square;
+                const visited = new Set();
+                while (pathSq) {
+                    const pCenter = canvas.grid.getCenterPoint({ i: pathSq.i, j: pathSq.j });
+                    pathToPortal.push({ x: pCenter.x, y: pCenter.y });
+                    if (pathSq.isAnchor || visited.has(pathSq.parentKey)) break;
+                    visited.add(pathSq.parentKey);
+                    pathSq = resultMap.get(pathSq.parentKey);
+                }
+
                 reachablePortals.push({
                     i: square.i,
                     j: square.j,
@@ -168,7 +183,8 @@ function _cacheReachablePortals(tokenId, startX, startY, resultMap, regionCache,
                     losOrigin: square.losOrigin || null,
                     portalTop: portal.topZ,
                     portalBottom: portal.bottomZ,
-                    levels: portal.levels, // FIX: Explicitly pass the levels array into the cache
+                    levels: portal.levels,
+                    pathToPortal: pathToPortal, // INJECT PATH
                 });
                 break; // Prevent pushing the same portal multiple times for a single square
             }
@@ -219,8 +235,9 @@ function _getSeedsForView(tokenId, viewZ, scaledPaces) {
                     i: p.i,
                     j: p.j,
                     cost: totalCost,
-                    parentGridKey: p.parentGridKey, // Connects the Dijkstra tree across floors
+                    parentGridKey: p.parentGridKey,
                     losOrigin: p.losOrigin,
+                    pathToPortal: p.pathToPortal, // FORWARD PATH TO NEW FLOOR
                 });
             }
         }
@@ -288,7 +305,7 @@ function _calculateSquare(token, scaledPaces, grid, centerPt, startX, startY, tw
             }
         }
     }
-    return processResults(minCosts, safetyMap, scaledPaces, grid, costPerGridUnit, parents);
+    return processResults(minCosts, safetyMap, scaledPaces, grid, costPerGridUnit, parents, seeds);
 }
 
 // ----------------------------------------------------------------------
@@ -369,7 +386,7 @@ function _calculateHex(token, scaledPaces, grid, centerPt, startX, startY, tw, t
             }
         }
     }
-    return processResults(minCosts, safetyMap, scaledPaces, grid, costPerGridUnit, parents);
+    return processResults(minCosts, safetyMap, scaledPaces, grid, costPerGridUnit, parents, seeds);
 }
 
 // ----------------------------------------------------------------------
@@ -458,7 +475,7 @@ function _calculateGridlessTheta(token, scaledPaces, centerPt, startX, startY, t
             }
         }
     }
-    return processResults(minCosts, safetyMap, scaledPaces, syntheticGrid, costPerGridUnit, parents);
+    return processResults(minCosts, safetyMap, scaledPaces, syntheticGrid, costPerGridUnit, parents, seeds);
 }
 
 function _createSyntheticGrid(resolutionPx, distancePerCell) {
@@ -484,7 +501,7 @@ function checkCellStrict(originPt, destPt, wallCheckCache) {
     return isClear;
 }
 
-function processResults(minCosts, safetyMap, scaledPaces, grid, costPerGridUnit, parents) {
+function processResults(minCosts, safetyMap, scaledPaces, grid, costPerGridUnit, parents, seeds = null) {
     const roundingRule = getRoundingMode();
     const resultSquares = new Map();
     const sortedPaces = [...scaledPaces].sort((a, b) => a.distance - b.distance);
@@ -492,6 +509,12 @@ function processResults(minCosts, safetyMap, scaledPaces, grid, costPerGridUnit,
     const limitPace = scaledPaces.find((p) => p.isActionLimit) || scaledPaces.find((p) => p.name === "Sprint") || (sortedPaces.length > 1 ? sortedPaces[1] : sortedPaces[0]);
     const limitDistance = limitPace ? limitPace.distance : 0;
     const limitColor = limitPace ? limitPace.color : "#FFFFFF";
+
+    // Create a fast lookup for seeds on this floor
+    const seedLookup = new Map();
+    if (seeds) {
+        for (const s of seeds) seedLookup.set(`${s.i}.${s.j}`, s);
+    }
 
     for (const [key, cost] of minCosts) {
         const [i, j] = key.split(".").map(Number);
@@ -517,6 +540,8 @@ function processResults(minCosts, safetyMap, scaledPaces, grid, costPerGridUnit,
             const isInnerZone = isCostWithinPace(cost, limitDistance, roundingRule, costPerGridUnit);
             const isSafe = safetyMap.get(key) === true;
 
+            const seedData = seedLookup.get(key);
+
             resultSquares.set(`${Math.round(topLeft.x)}.${Math.round(topLeft.y)}`, {
                 i,
                 j,
@@ -532,6 +557,8 @@ function processResults(minCosts, safetyMap, scaledPaces, grid, costPerGridUnit,
                 limitColor,
                 isSafe: isSafe,
                 isAnchor: cost === 0,
+                isPortal: !!seedData,
+                pathToPortal: seedData ? seedData.pathToPortal : null,
                 parentGridKey: parentKeyData, // i.j key exclusively for cross-floor Dijkstra linkage
                 parentKey: parentKey, // x.y key exclusively for hover rendering
             });

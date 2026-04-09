@@ -22,6 +22,7 @@ const SETTING_COLOR_RUN = "colorRun";
 const SETTING_COLOR_SPRINT = "colorSprint";
 const SETTING_COLOR_DASH = "colorDash";
 const SETTING_COLOR_ANCHOR = "colorAnchor";
+const SETTING_COLOR_PORTAL = "colorPortal";
 
 /**
  * Register all module settings.
@@ -136,6 +137,7 @@ export function registerSettings() {
     // 4. Colour Settings
     const defaultColors = {
         [SETTING_COLOR_ANCHOR]: { name: "Anchor", color: "#0000AA" },
+        [SETTING_COLOR_PORTAL]: { name: "Portal", color: "#800080" },
         [SETTING_COLOR_CREEP]: { name: "Creep", color: "#00FFFF" },
         [SETTING_COLOR_WALK]: { name: "Walk", color: "#00FF00" },
         [SETTING_COLOR_JOG]: { name: "Jog", color: "#ADFF2F" },
@@ -160,7 +162,7 @@ export function registerSettings() {
 Hooks.on("renderSettingsConfig", (app, html, data) => {
     const $html = $(html);
 
-    const colorSettings = [SETTING_COLOR_ANCHOR, SETTING_COLOR_CREEP, SETTING_COLOR_WALK, SETTING_COLOR_JOG, SETTING_COLOR_RUN, SETTING_COLOR_SPRINT, SETTING_COLOR_DASH];
+    const colorSettings = [SETTING_COLOR_ANCHOR, SETTING_COLOR_PORTAL, SETTING_COLOR_CREEP, SETTING_COLOR_WALK, SETTING_COLOR_JOG, SETTING_COLOR_RUN, SETTING_COLOR_SPRINT, SETTING_COLOR_DASH];
 
     colorSettings.forEach((key) => {
         const settingName = `${MODULE_ID}.${key}`;
@@ -177,8 +179,9 @@ Hooks.on("renderSettingsConfig", (app, html, data) => {
 
             // 2. Label Formatting
             const paceName = key.replace("color", "");
-            const localizedPace = game.i18n.localize(`RMU_MRF.paces.${paceName}`);
-            const correctLabel = game.i18n.format("RMU_MRF.settings.colorPace", { pace: localizedPace });
+            // Fallback added to safely handle non-pace keys like Portal/Anchor
+            const localizedString = game.i18n.has(`RMU_MRF.paces.${paceName}`) ? game.i18n.localize(`RMU_MRF.paces.${paceName}`) : paceName;
+            const correctLabel = game.i18n.format("RMU_MRF.settings.colorPace", { pace: localizedString });
 
             // Find the label element in the form group and update text
             const formGroup = input.closest(".form-group");
@@ -198,6 +201,7 @@ export function getVisualSettings() {
         showHoverPath: game.settings.get(MODULE_ID, SETTING_SHOW_HOVER_PATH),
         colors: {
             Anchor: game.settings.get(MODULE_ID, SETTING_COLOR_ANCHOR),
+            Portal: game.settings.get(MODULE_ID, SETTING_COLOR_PORTAL),
             Creep: game.settings.get(MODULE_ID, SETTING_COLOR_CREEP),
             Walk: game.settings.get(MODULE_ID, SETTING_COLOR_WALK),
             Jog: game.settings.get(MODULE_ID, SETTING_COLOR_JOG),
