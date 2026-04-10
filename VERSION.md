@@ -2,7 +2,7 @@
 
 | Version | Changes |
 | :--- | :--- |
-| **Version 2.0.0** | **NEW FEATURES**<br>- **Path finding through scene levels:** |
+| **Version 2.0.0** | **NEW FEATURES**<br>- **Path finding through scene levels:** <br>- **Legend:** Added a legend with reminders of the default keybinds and the colours used to show each movement pace.|
 | **Version 1.4.2** | **IMPROVEMENTS**<br>- Put the Interactive Path & Distance Tooltip behind a game setting so it can be enabled/disabled. This can also be done with the `P` key (for path).<br><br>**BUG FIX**<br>- Fixed a memory leak on hex maps.|
 | **Version 1.4.1** | **REMOVED**<br>- Removed Spanish (`es` and `es-419`) and Swedish (`sv`) language support to comply with Foundry's AI Content Policy. If native speakers can confirm the quality of the translations, they can be quickly restored.|
 | **Version 1.4.0** | **NEW FEATURES**<br>- **Interactive Path & Distance Tooltip:** Hovering your mouse anywhere inside the movement area will display the exact distance cost. It will also draw a trace back to the token to show exactly how the algorithm navigated around walls and corners to get there.<br><br>**IMPROVEMENTS**<br>- **Enhanced Visual Boundaries**: Added thin border lines between different movement paces (Walk, Sprint, Dash, etc.) to make transitioning between action penalties much easier to read.<br>- **Customisable Anchor Footprint**: The starting "Anchor" footprint is now clearly highlighted. Its color can be fully customised in the module's Game Settings.<br>- **UI Declutter**: Removed the static distance text from every grid cell. The overlay is now much cleaner and easier to read, relying entirely on the new Interactive Path & Distance Tooltip.|

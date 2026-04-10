@@ -9,7 +9,7 @@
         "systems": [{ "id": "rmu", "type": "system", "compatibility": { "minimum": "1.0.0" } }]
     },
     "esmodules": ["main.js"],
-    "styles": [],
+    "styles": ["styles/filroden-theme.css", "styles/rmu-mrf.css"],
     "languages": [
         { "lang": "en", "name": "English", "path": "languages/en.json" },
         { "lang": "en-GB", "name": "English (UK)", "path": "languages/en-gb.json" },

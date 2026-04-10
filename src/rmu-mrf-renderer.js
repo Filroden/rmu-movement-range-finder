@@ -5,6 +5,7 @@
  */
 
 import { getVisualSettings } from "./rmu-mrf-settings.js";
+import { drawLegend, clearLegend } from "./rmu-mrf-legend.js";
 
 const HOVER_PATH_STYLES = {
     currentFloor: { thickness: 6, color: 0xffffff, alpha: 0.7 },
@@ -17,6 +18,7 @@ export function drawOverlay(token, data, mode, anchor) {
 
     // Grid mode (Square & Hex)
     _drawGridHighlight(token, data, settings);
+    drawLegend();
 }
 
 export function clearOverlay() {
@@ -34,6 +36,8 @@ export function clearOverlay() {
         c.removeChildren();
         c.destroy({ children: true }); // Ensure deep cleanup
     });
+
+    clearLegend();
 }
 
 /**
