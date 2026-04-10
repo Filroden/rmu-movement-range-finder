@@ -419,7 +419,7 @@ function _calculateGridlessTheta({ token, scaledPaces, centerPt, startX, startY,
     const queue = new MinHeap();
     const safetyMap = new Map();
 
-    _initializeQueue({ parents, queue, minCosts, safetyMap, syntheticGrid, centerPt, startX, startY, tw, th, isTheta: true, wallCheckCache, targetZ, seeds });
+    _initializeQueue({ parents, queue, minCosts, safetyMap, grid: syntheticGrid, centerPt, startX, startY, tw, th, isTheta: true, wallCheckCache, targetZ, seeds });
 
     const searchLimit = Math.max(...scaledPaces.map((p) => p.distance)) + costPerGridUnit * 2;
     const neighborsOffsets = [
