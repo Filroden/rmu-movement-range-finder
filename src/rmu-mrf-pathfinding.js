@@ -5,7 +5,7 @@
 
 import { getRoundingMode, getGridlessResolution } from "./rmu-mrf-settings.js";
 
-const METRIC_UNITS = ["m", "m.", "meter", "meters", "metre", "metres"];
+const METRIC_UNITS = new Set(["m", "m.", "meter", "meters", "metre", "metres"]);
 const FT_PER_METER = 3.33333;
 
 const globalPortalCache = new Map();
@@ -17,7 +17,7 @@ export function calculateReachableSquares(token, movementPaces, originOverride =
     const regionCache = _buildRegionCache();
 
     const units = canvas.scene.grid.units?.toLowerCase();
-    const distanceScale = units && METRIC_UNITS.includes(units) ? 1 / FT_PER_METER : 1;
+    const distanceScale = units && METRIC_UNITS.has(units) ? 1 / FT_PER_METER : 1;
     const scaledPaces = movementPaces.map((p) => ({ ...p, distance: p.distance * distanceScale }));
 
     const startX = originOverride ? originOverride.x : token.document.x;
@@ -44,9 +44,8 @@ export function calculateReachableSquares(token, movementPaces, originOverride =
     const shouldRecalcNative = tokenHasMoved || (forceRecalc && viewZ === tokenZ);
 
     if (shouldRecalcNative) {
-        const nativeResults = _runAlgorithm(grid, token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, tokenZ, regionCache);
+        const nativeResults = _runAlgorithm({ grid, token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, targetZ: tokenZ, regionCache });
         _cacheReachablePortals(token.id, startX, startY, nativeResults, regionCache, tokenZ);
-        cacheData = globalPortalCache.get(token.id);
 
         if (viewZ === tokenZ) return nativeResults;
     }
@@ -56,27 +55,27 @@ export function calculateReachableSquares(token, movementPaces, originOverride =
     // ---------------------------------------------------------
     if (viewZ === tokenZ) {
         // If we are on the native floor but didn't trigger a native cache rebuild (e.g. standard hover refresh)
-        return _runAlgorithm(grid, token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, viewZ, regionCache);
+        return _runAlgorithm({ grid, token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, targetZ: viewZ, regionCache });
     } else {
         const seeds = _getSeedsForView(token.id, viewZ, scaledPaces);
         if (!seeds || seeds.length === 0) return new Map();
 
-        return _runAlgorithm(grid, token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, viewZ, regionCache, seeds);
+        return _runAlgorithm({ grid, token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, targetZ: viewZ, regionCache, seeds });
     }
 }
 
 // ----------------------------------------------------------------------
 // ALGORITHM WRAPPER
 // ----------------------------------------------------------------------
-function _runAlgorithm(grid, token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, targetZ, regionCache, seeds = null) {
+function _runAlgorithm({ grid, token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, targetZ, regionCache, seeds = null }) {
     const isHex = grid.type !== CONST.GRID_TYPES.SQUARE && grid.type !== CONST.GRID_TYPES.GRIDLESS;
 
     if (grid.type === CONST.GRID_TYPES.GRIDLESS) {
-        return _calculateGridlessTheta(token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, targetZ, regionCache, seeds);
+        return _calculateGridlessTheta({ token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, targetZ, regionCache, seeds });
     } else if (isHex) {
-        return _calculateHex(token, scaledPaces, grid, centerPt, startX, startY, tw, th, wallCheckCache, targetZ, regionCache, seeds);
+        return _calculateHex({ token, scaledPaces, grid, centerPt, startX, startY, tw, th, wallCheckCache, targetZ, regionCache, seeds });
     } else {
-        return _calculateSquare(token, scaledPaces, grid, centerPt, startX, startY, tw, th, wallCheckCache, targetZ, regionCache, seeds);
+        return _calculateSquare({ token, scaledPaces, grid, centerPt, startX, startY, tw, th, wallCheckCache, targetZ, regionCache, seeds });
     }
 }
 
@@ -142,49 +141,53 @@ function _hasFloorAt(x, y, targetZ, regionCache) {
 
     // 3. Scene Base Elevation Fallback
     const baseZ = canvas.scene?.elevation ?? 0;
-    if (targetZ === baseZ || targetZ === 0) return true;
 
-    return false;
+    return targetZ === baseZ || targetZ === 0;
+}
+
+// Check if the portal is on the correct level
+function _isLevelMatch(portal, nativeLevelId, currentZ) {
+    if (nativeLevelId && portal.levels?.length) {
+        return portal.levels.includes(nativeLevelId);
+    }
+    return currentZ >= portal.bottomZ && currentZ < portal.topZ;
+}
+
+// Trace the historical path back to the anchor
+function _buildPathToPortal(startSquare, resultMap) {
+    const pathToPortal = [];
+    let pathSq = startSquare;
+    const visited = new Set();
+
+    while (pathSq) {
+        const pCenterX = pathSq.x + pathSq.w / 2;
+        const pCenterY = pathSq.y + pathSq.h / 2;
+        pathToPortal.push({ x: pCenterX, y: pCenterY });
+
+        if (pathSq.isAnchor || visited.has(pathSq.parentKey)) {
+            break;
+        }
+        visited.add(pathSq.parentKey);
+        pathSq = resultMap.get(pathSq.parentKey);
+    }
+    return pathToPortal;
 }
 
 function _cacheReachablePortals(tokenId, startX, startY, resultMap, regionCache, currentZ) {
     const reachablePortals = [];
-
-    // Apply the strict exclusive-top level checking here
     const nativeLevelId = _getActiveLevelId(currentZ);
 
-    for (const [key, square] of resultMap.entries()) {
-        // Calculate center geometrically to support Gridless synthetic squares
+    for (const square of resultMap.values()) {
         const centerX = square.x + square.w / 2;
         const centerY = square.y + square.h / 2;
 
         for (const portal of regionCache.portals) {
-            let levelMatch = false;
-            if (nativeLevelId && portal.levels?.length) {
-                levelMatch = portal.levels.includes(nativeLevelId);
-            } else {
-                levelMatch = currentZ >= portal.bottomZ && currentZ < portal.topZ;
-            }
+            const levelMatch = _isLevelMatch(portal, nativeLevelId, currentZ);
+            const isColliding = portal.doc.testPoint({ x: centerX, y: centerY, z: currentZ, elevation: currentZ });
 
-            // Use currentZ instead of portal's bottom value to validate geometry correctly
-            if (levelMatch && portal.doc.testPoint({ x: centerX, y: centerY, z: currentZ, elevation: currentZ })) {
-                // MUTATE NATIVE MAP: Flag this square as a portal for native floor rendering
+            if (levelMatch && isColliding) {
                 square.isPortal = true;
-
-                // CACHE THE PATH: Build the array of points back to the anchor
-                const pathToPortal = [];
-                let pathSq = square;
-                const visited = new Set();
-                while (pathSq) {
-                    // FIX: Ensure the historical path also respects geometric centers
-                    const pCenterX = pathSq.x + pathSq.w / 2;
-                    const pCenterY = pathSq.y + pathSq.h / 2;
-                    pathToPortal.push({ x: pCenterX, y: pCenterY });
-
-                    if (pathSq.isAnchor || visited.has(pathSq.parentKey)) break;
-                    visited.add(pathSq.parentKey);
-                    pathSq = resultMap.get(pathSq.parentKey);
-                }
+                const pathToPortal = _buildPathToPortal(square, resultMap);
 
                 reachablePortals.push({
                     i: square.i,
@@ -195,9 +198,9 @@ function _cacheReachablePortals(tokenId, startX, startY, resultMap, regionCache,
                     portalTop: portal.topZ,
                     portalBottom: portal.bottomZ,
                     levels: portal.levels,
-                    pathToPortal: pathToPortal, // INJECT PATH
+                    pathToPortal: pathToPortal,
                 });
-                break; // Prevent pushing the same portal multiple times for a single square
+                break;
             }
         }
     }
@@ -259,13 +262,13 @@ function _getSeedsForView(tokenId, viewZ, scaledPaces) {
 // ----------------------------------------------------------------------
 // ALGORITHM 1: SQUARE
 // ----------------------------------------------------------------------
-function _calculateSquare(token, scaledPaces, grid, centerPt, startX, startY, tw, th, wallCheckCache, targetZ, regionCache, seeds = null) {
+function _calculateSquare({ token, scaledPaces, grid, centerPt, startX, startY, tw, th, wallCheckCache, targetZ, regionCache, seeds = null }) {
     const parents = new Map();
     const minCosts = new Map();
     const queue = new MinHeap();
     const safetyMap = new Map();
 
-    _initializeQueue(parents, queue, minCosts, safetyMap, grid, centerPt, startX, startY, tw, th, false, wallCheckCache, targetZ, seeds);
+    _initializeQueue({ parents, queue, minCosts, safetyMap, grid, centerPt, startX, startY, tw, th, isTheta: false, wallCheckCache, targetZ, seeds });
 
     const costPerGridUnit = Number(grid.distance);
     const searchLimit = Math.max(...scaledPaces.map((p) => p.distance)) + costPerGridUnit;
@@ -322,13 +325,13 @@ function _calculateSquare(token, scaledPaces, grid, centerPt, startX, startY, tw
 // ----------------------------------------------------------------------
 // ALGORITHM 2: HEX
 // ----------------------------------------------------------------------
-function _calculateHex(token, scaledPaces, grid, centerPt, startX, startY, tw, th, wallCheckCache, targetZ, regionCache, seeds = null) {
+function _calculateHex({ token, scaledPaces, grid, centerPt, startX, startY, tw, th, wallCheckCache, targetZ, regionCache, seeds = null }) {
     const parents = new Map();
     const minCosts = new Map();
     const safetyMap = new Map();
     const queue = new MinHeap();
 
-    _initializeQueue(parents, queue, minCosts, safetyMap, grid, centerPt, startX, startY, tw, th, false, wallCheckCache, targetZ, seeds);
+    _initializeQueue({ parents, queue, minCosts, safetyMap, grid, centerPt, startX, startY, tw, th, isTheta: false, wallCheckCache, targetZ, seeds });
 
     const costPerGridUnit = Number(grid.distance);
     const searchLimit = Math.max(...scaledPaces.map((p) => p.distance)) + costPerGridUnit;
@@ -403,7 +406,7 @@ function _calculateHex(token, scaledPaces, grid, centerPt, startX, startY, tw, t
 // ----------------------------------------------------------------------
 // ALGORITHM 3: GRIDLESS (Theta*)
 // ----------------------------------------------------------------------
-function _calculateGridlessTheta(token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, targetZ, regionCache, seeds = null) {
+function _calculateGridlessTheta({ token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, targetZ, regionCache, seeds = null }) {
     const parents = new Map();
     const resolutionPx = getGridlessResolution();
     const costPerGridUnit = canvas.scene.grid.distance;
@@ -416,7 +419,7 @@ function _calculateGridlessTheta(token, scaledPaces, centerPt, startX, startY, t
     const queue = new MinHeap();
     const safetyMap = new Map();
 
-    _initializeQueue(parents, queue, minCosts, safetyMap, syntheticGrid, centerPt, startX, startY, tw, th, true, wallCheckCache, targetZ, seeds);
+    _initializeQueue({ parents, queue, minCosts, safetyMap, syntheticGrid, centerPt, startX, startY, tw, th, isTheta: true, wallCheckCache, targetZ, seeds });
 
     const searchLimit = Math.max(...scaledPaces.map((p) => p.distance)) + costPerGridUnit * 2;
     const neighborsOffsets = [
@@ -514,6 +517,23 @@ function checkCellStrict(originPt, destPt, wallCheckCache) {
     return isClear;
 }
 
+/**
+ * Translates a grid coordinate string (i.j) into a pixel coordinate string (x.y).
+ */
+function _formatParentKey(parentKeyData, grid) {
+    if (!parentKeyData) return null;
+    const [pI, pJ] = parentKeyData.split(".").map(Number);
+    const pTopLeft = grid.getTopLeftPoint({ i: pI, j: pJ });
+    return `${Math.round(pTopLeft.x)}.${Math.round(pTopLeft.y)}`;
+}
+
+/**
+ * Iterates sorted paces to find the first valid match for the given cost.
+ */
+function _determineBestPace(cost, sortedPaces, roundingRule, costPerGridUnit) {
+    return sortedPaces.find((pace) => isCostWithinPace(cost, pace.distance, roundingRule, costPerGridUnit)) || null;
+}
+
 function processResults(minCosts, safetyMap, scaledPaces, grid, costPerGridUnit, parents, seeds = null) {
     const roundingRule = getRoundingMode();
     const resultSquares = new Map();
@@ -523,60 +543,42 @@ function processResults(minCosts, safetyMap, scaledPaces, grid, costPerGridUnit,
     const limitDistance = limitPace ? limitPace.distance : 0;
     const limitColor = limitPace ? limitPace.color : "#FFFFFF";
 
-    // Create a fast lookup for seeds on this floor
     const seedLookup = new Map();
     if (seeds) {
         for (const s of seeds) seedLookup.set(`${s.i}.${s.j}`, s);
     }
 
     for (const [key, cost] of minCosts) {
+        const bestPace = _determineBestPace(cost, sortedPaces, roundingRule, costPerGridUnit);
+        if (!bestPace) continue;
+
         const [i, j] = key.split(".").map(Number);
-
+        const topLeft = grid.getTopLeftPoint({ i, j });
         const parentKeyData = parents ? parents.get(key) : null;
-        let parentKey = null;
-        if (parentKeyData) {
-            const [pI, pJ] = parentKeyData.split(".").map(Number);
-            const pTopLeft = grid.getTopLeftPoint({ i: pI, j: pJ });
-            parentKey = `${Math.round(pTopLeft.x)}.${Math.round(pTopLeft.y)}`;
-        }
+        const seedData = seedLookup.get(key);
 
-        let bestPace = null;
-        for (const pace of sortedPaces) {
-            if (isCostWithinPace(cost, pace.distance, roundingRule, costPerGridUnit)) {
-                bestPace = pace;
-                break;
-            }
-        }
-
-        if (bestPace) {
-            const topLeft = grid.getTopLeftPoint({ i, j });
-            const isInnerZone = isCostWithinPace(cost, limitDistance, roundingRule, costPerGridUnit);
-            const isSafe = safetyMap.get(key) === true;
-
-            const seedData = seedLookup.get(key);
-
-            resultSquares.set(`${Math.round(topLeft.x)}.${Math.round(topLeft.y)}`, {
-                i,
-                j,
-                x: Math.round(topLeft.x),
-                y: Math.round(topLeft.y),
-                w: grid.size,
-                h: grid.size,
-                gridType: grid.type,
-                color: bestPace.color,
-                paceName: bestPace.name,
-                cost,
-                isInnerZone,
-                limitColor,
-                isSafe: isSafe,
-                isAnchor: cost === 0,
-                isPortal: !!seedData,
-                pathToPortal: seedData ? seedData.pathToPortal : null,
-                parentGridKey: parentKeyData, // i.j key exclusively for cross-floor Dijkstra linkage
-                parentKey: parentKey, // x.y key exclusively for hover rendering
-            });
-        }
+        resultSquares.set(`${Math.round(topLeft.x)}.${Math.round(topLeft.y)}`, {
+            i,
+            j,
+            x: Math.round(topLeft.x),
+            y: Math.round(topLeft.y),
+            w: grid.size,
+            h: grid.size,
+            gridType: grid.type,
+            color: bestPace.color,
+            paceName: bestPace.name,
+            cost,
+            isInnerZone: isCostWithinPace(cost, limitDistance, roundingRule, costPerGridUnit),
+            limitColor,
+            isSafe: safetyMap.get(key) === true,
+            isAnchor: cost === 0,
+            isPortal: !!seedData,
+            pathToPortal: seedData ? seedData.pathToPortal : null,
+            parentGridKey: parentKeyData,
+            parentKey: _formatParentKey(parentKeyData, grid),
+        });
     }
+
     return resultSquares;
 }
 
@@ -642,27 +644,32 @@ class MinHeap {
     }
 }
 
-function _initializeQueue(parents, queue, minCosts, safetyMap, grid, centerPt, startX, startY, tw, th, isTheta, wallCheckCache, targetZ, seeds) {
-    if (seeds && seeds.length > 0) {
-        for (const seed of seeds) {
-            const key = `${seed.i}.${seed.j}`;
+/**
+ * Populates the pathfinding queue using cross-floor portal seeds.
+ */
+function _seedQueueFromPortals({ parents, queue, minCosts, safetyMap, grid, isTheta, seeds }) {
+    for (const seed of seeds) {
+        const key = `${seed.i}.${seed.j}`;
+        const oldCost = minCosts.get(key);
 
-            const oldCost = minCosts.get(key);
-            if (oldCost === undefined || seed.cost < oldCost) {
-                minCosts.set(key, seed.cost);
-                safetyMap.set(key, true);
-                parents.set(key, seed.parentGridKey); // Use the protected i.j key!
+        if (oldCost === undefined || seed.cost < oldCost) {
+            minCosts.set(key, seed.cost);
+            safetyMap.set(key, true);
+            parents.set(key, seed.parentGridKey);
 
-                if (isTheta) {
-                    const center = grid.getCenterPoint({ i: seed.i, j: seed.j });
-                    seed.losOrigin = seed.losOrigin || { x: center.x, y: center.y, cost: seed.cost, isInitial: false };
-                }
-                queue.push(seed);
+            if (isTheta) {
+                const center = grid.getCenterPoint({ i: seed.i, j: seed.j });
+                seed.losOrigin = seed.losOrigin || { x: center.x, y: center.y, cost: seed.cost, isInitial: false };
             }
+            queue.push(seed);
         }
-        return;
     }
+}
 
+/**
+ * Populates the pathfinding queue by scanning the token's native footprint.
+ */
+function _seedQueueFromTokenFootprint({ queue, minCosts, safetyMap, grid, centerPt, startX, startY, tw, th, isTheta, wallCheckCache, targetZ }) {
     const margin = grid.size * 0.02;
     const safeLeft = startX + margin;
     const safeRight = startX + tw - margin;
@@ -685,28 +692,43 @@ function _initializeQueue(parents, queue, minCosts, safetyMap, grid, centerPt, s
             const center = grid.getCenterPoint({ i, j });
             if (center.x >= safeLeft && center.x <= safeRight && center.y >= safeTop && center.y <= safeBottom) {
                 const dest3D = { x: center.x, y: center.y, elevation: targetZ + 0.1 };
-                const isVisible = checkCellStrict(origin3D, dest3D, wallCheckCache);
 
-                if (isVisible) {
+                if (checkCellStrict(origin3D, dest3D, wallCheckCache)) {
                     const key = `${i}.${j}`;
                     if (!minCosts.has(key)) {
                         minCosts.set(key, 0);
                         safetyMap.set(key, true);
-                        if (isTheta) queue.push({ i, j, cost: 0, losOrigin: startOrigin });
-                        else queue.push({ i, j, cost: 0 });
+                        queue.push(isTheta ? { i, j, cost: 0, losOrigin: startOrigin } : { i, j, cost: 0 });
                     }
                 }
             }
         }
     }
+}
 
-    if (queue.length === 0) {
-        const centerOffset = grid.getOffset(centerPt);
+/**
+ * Main initialisation router.
+ */
+function _initializeQueue(params) {
+    if (params.seeds && params.seeds.length > 0) {
+        _seedQueueFromPortals(params);
+        return;
+    }
+
+    _seedQueueFromTokenFootprint(params);
+
+    // Fallback if token footprint yields no valid origins
+    if (params.queue.length === 0) {
+        const centerOffset = params.grid.getOffset(params.centerPt);
         const key = `${centerOffset.i}.${centerOffset.j}`;
-        minCosts.set(key, 0);
-        safetyMap.set(key, true);
-        if (isTheta) queue.push({ i: centerOffset.i, j: centerOffset.j, cost: 0, losOrigin: startOrigin });
-        else queue.push({ i: centerOffset.i, j: centerOffset.j, cost: 0 });
+        params.minCosts.set(key, 0);
+        params.safetyMap.set(key, true);
+
+        const payload = { i: centerOffset.i, j: centerOffset.j, cost: 0 };
+        if (params.isTheta) {
+            payload.losOrigin = { x: params.centerPt.x, y: params.centerPt.y, cost: 0, isInitial: true };
+        }
+        params.queue.push(payload);
     }
 }
 
