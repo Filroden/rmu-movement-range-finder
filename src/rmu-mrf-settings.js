@@ -73,8 +73,9 @@ export function registerSettings() {
         editable: [{ key: "KeyP" }], // P
         onDown: () => {
             const current = game.settings.get(MODULE_ID, SETTING_SHOW_HOVER_PATH);
-            game.settings.set(MODULE_ID, SETTING_SHOW_HOVER_PATH, !current);
-            const message = !current ? game.i18n.localize("RMU_MRF.notifications.hoverEnabled") : game.i18n.localize("RMU_MRF.notifications.hoverDisabled");
+            const newState = !current; // Define the new state explicitly
+            game.settings.set(MODULE_ID, SETTING_SHOW_HOVER_PATH, newState);
+            const message = newState ? game.i18n.localize("RMU_MRF.notifications.hoverEnabled") : game.i18n.localize("RMU_MRF.notifications.hoverDisabled");
             ui.notifications.info(message);
         },
         restricted: false,
@@ -129,7 +130,7 @@ export function registerSettings() {
         scope: "client",
         config: true,
         type: Number,
-        range: { min: 0.0, max: 1.0, step: 0.05 },
+        range: { min: 0, max: 1, step: 0.05 },
         default: 0.15,
         onChange: refreshOverlay,
     });

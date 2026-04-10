@@ -30,5 +30,5 @@
     "RMU_MRF.keybindings.toggleHoverPath.hint": "Shows or hides the path trace line on the movement overlay.",
     "RMU_MRF.notifications.hoverEnabled": "RMU Hover Path: Enabled",
     "RMU_MRF.notifications.hoverDisabled": "RMU Hover Path: Disabled",
-    "RMU_MRF.paces.Portal": "Portal"
+    "RMU_MRF.paces.Portal": "Scene Region Portal"
 }
