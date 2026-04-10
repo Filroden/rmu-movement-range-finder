@@ -15,10 +15,10 @@ import { drawOverlay, clearOverlay } from "./src/rmu-mrf-renderer.js";
 import { registerSettings, getVisualSettings, MODULE_ID } from "./src/rmu-mrf-settings.js";
 import { getMovementPaces } from "./src/rmu-mrf-calculator.js";
 
-const VALID_ACTOR_TYPES = ["Character", "Creature"];
+const VALID_ACTOR_TYPES = new Set(["Character", "Creature"]);
 
 const isValidActor = (token) => {
-    return token?.actor && VALID_ACTOR_TYPES.includes(token.actor.type);
+    return token?.actor && VALID_ACTOR_TYPES.has(token.actor.type);
 };
 
 // ANCHOR CACHE
@@ -92,34 +92,33 @@ Hooks.on("updateScene", (document, change, options, userId) => {
 });
 
 Hooks.on("controlToken", (token, controlled) => {
-    if (controlled) {
-        if (canvas.tokens.controlled.length === 1) {
-            if (!isValidActor(token)) {
-                clearOverlay();
-                return;
-            }
-
-            _cachedData.tokenId = token.id;
-            _cachedData.result = null;
-
-            // Do NOT auto-set anchor to current position.
-            let savedAnchor = _anchorCache.get(token.id);
-            if (!savedAnchor) {
-                // First time selecting this token? Set anchor to current.
-                savedAnchor = { x: token.document.x, y: token.document.y };
-                _anchorCache.set(token.id, savedAnchor);
-            }
-            _cachedData.anchor = savedAnchor;
-
-            triggerUpdate(true);
-        } else {
-            clearOverlay();
-        }
-    } else {
-        if (canvas.tokens.controlled.length === 0) {
-            clearOverlay();
-        }
+    // 1. Guard: If we don't have exactly one token selected, clear and abort.
+    if (canvas.tokens.controlled.length !== 1) {
+        clearOverlay();
+        return;
     }
+
+    // 2. Guard: If a token is losing control (but exactly 1 remains selected), do nothing.
+    if (!controlled) return;
+
+    // 3. Guard: If the single selected token is not a valid actor, clear and abort.
+    if (!isValidActor(token)) {
+        clearOverlay();
+        return;
+    }
+
+    // --- Core Logic ---
+    _cachedData.tokenId = token.id;
+    _cachedData.result = null;
+
+    let savedAnchor = _anchorCache.get(token.id);
+    if (!savedAnchor) {
+        savedAnchor = { x: token.document.x, y: token.document.y };
+        _anchorCache.set(token.id, savedAnchor);
+    }
+    _cachedData.anchor = savedAnchor;
+
+    triggerUpdate(true);
 });
 
 Hooks.on("updateToken", (document, change, options, userId) => {
