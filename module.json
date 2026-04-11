@@ -3,7 +3,7 @@
     "title": "RMU Movement Range Finder",
     "description": "RMU Movement Range Finder is a tactical aid for the Rolemaster Unified (RMU) system to support grid-based movement. It calculates and visualises how far a token can move based on their Base Movement Rate and the cost of the grid, taking into account walls and movement paces (Walk, Run, Sprint, etc.).",
     "version": "2.0.0",
-    "compatibility": { "minimum": "14", "verified": "14.359" },
+    "compatibility": { "minimum": "14", "verified": "14.360" },
     "authors": [{ "name": "Ken Dearman" }],
     "relationships": {
         "systems": [{ "id": "rmu", "type": "system", "compatibility": { "minimum": "1.0.0" } }]

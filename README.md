@@ -9,7 +9,7 @@
 ![Last Commit](https://img.shields.io/github/last-commit/Filroden/rmu-movement-range-finder)
 ![Issues](https://img.shields.io/github/issues/Filroden/rmu-movement-range-finder)
 
-**RMU Movement Range Finder** is a tactical aid for the *Rolemaster Unified* (RMU) system that visualises movement for gridless, square, and hex maps. It calculates exactly how far a token can move based on their Base Movement Rate and the map's terrain, routeing around walls and obstacles, and moving up and down within scenes that have regions defined with the `changeElevation` behaviour.
+**RMU Movement Range Finder** is a tactical aid for the *Rolemaster Unified* (RMU) system that visualises movement for gridless, square, and hex maps. It calculates exactly how far a token can move based on their Base Movement Rate and the map's terrain, routeing around walls and obstacles, and moving up and down levels within scenes that have regions defined with the `changeElevation` behaviour.
 
 It highlights the movement area using colour-graduated cells based on RMU's movement paces (`Walk`, `Run`, `Sprint`, etc.) to help determine pace penalties when moving while acting.
 
@@ -46,11 +46,11 @@ It features an **"Anchor & Scout"** system that allows players to move their tok
 
 ## Game settings
 
-- **Rounding Rules:** (World Setting) Choose between "Permissive" (enter square if >0 movement remains), "Standard" (enter if >50% remains), or "Strict" (must have 100% cost).
-- **Gridless Resolution:** (Player Setting) Controls the visual fidelity of the movement boundary on Gridless maps. Lower values create smoother shapes but require significantly more PC power.
+- **Rounding Rules:** (World Setting) Choose between "Permissive" (enter square if >0 movement remains), "Standard" (enter if >50% remains), or "Strict" (must have 100% cost available).
+- **Gridless Resolution:** (Player Setting) Controls the visual resolution of the movement boundary on Gridless maps. Lower values create smoother shapes but require significantly more PC power and will take longer to calculate.
 - **Opacity:** (Player Setting) Adjust how transparent the grid overlay is.
 - **Labels:** (Player Setting) Toggle text labels showing the exact distance cost on every square.
-- **Colour Palette:** (Player Setting) Customise the colours for every pace (Creep through Dash) using the colour picker.
+- **Colour Palette:** (Player Setting) Customise the colours for every pace (`Creep` through `Dash`), plus the `anchor` square and any `portal` regions using the colour picker.
 
 ## Important Note on Visibility
 
