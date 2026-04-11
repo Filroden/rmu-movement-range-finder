@@ -54,7 +54,9 @@ export function calculateReachableSquares(token, movementPaces, originOverride =
 
     // TRUE ABSOLUTE ELEVATION
     const viewZ = trackedViewZ;
-    const tokenZ = token.document?.elevation ?? 0;
+
+    // The 'Native Floor' is strictly where the Anchor is, not where the token currently is.
+    const anchorZ = originOverride?.elevation ?? token.document?.elevation ?? 0;
 
     // Shared cache for collision raycasts to drastically reduce CPU load within a single pass
     const wallCheckCache = new Map();
@@ -65,26 +67,26 @@ export function calculateReachableSquares(token, movementPaces, originOverride =
     let cacheData = globalPortalCache.get(token.id);
 
     // Invalidate the cache if the token physically moves or changes elevation
-    const tokenHasMoved = !cacheData || cacheData.nativeZ !== tokenZ || cacheData.x !== startX || cacheData.y !== startY;
+    const anchorHasMoved = !cacheData || cacheData.nativeZ !== anchorZ || cacheData.x !== startX || cacheData.y !== startY;
 
     // Architectural Guard: Only allow wall-updates (forceRecalc) to wipe the native cache
     // IF we are actively viewing the native floor. If we recalculate the native floor
     // while viewing a different floor, Foundry tests the native paths against the wrong wall geometry!
-    const shouldRecalcNative = tokenHasMoved || (forceRecalc && viewZ === tokenZ);
+    const shouldRecalcNative = anchorHasMoved || (forceRecalc && viewZ === anchorZ);
 
     if (shouldRecalcNative) {
-        const nativeResults = _runAlgorithm({ grid, token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, targetZ: tokenZ, regionCache });
+        const nativeResults = _runAlgorithm({ grid, token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, targetZ: anchorZ, regionCache });
 
         // Scan the results for portals (stairs) and cache them as launchpads for upper floors
-        _cacheReachablePortals(token.id, startX, startY, nativeResults, regionCache, tokenZ);
+        _cacheReachablePortals(token.id, startX, startY, nativeResults, regionCache, anchorZ);
 
-        if (viewZ === tokenZ) return nativeResults;
+        if (viewZ === anchorZ) return nativeResults;
     }
 
     // ---------------------------------------------------------
     // PHASE 2: RENDERER ROUTING
     // ---------------------------------------------------------
-    if (viewZ === tokenZ) {
+    if (viewZ === anchorZ) {
         // If we are on the native floor but didn't trigger a native cache rebuild (e.g. standard hover refresh)
         return _runAlgorithm({ grid, token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, targetZ: viewZ, regionCache });
     } else {

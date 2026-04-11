@@ -52,6 +52,7 @@ let _cachedData = {
     anchor: null,
     result: null,
     viewZ: null, // Tracks the scene elevation level the user was looking at when the cache was built
+    playerFloorZ: null, // For players, we track the token's elevation at the time of cache build to detect mid-turn elevation changes that would require a forced recalculation
 };
 
 // --- FOUNDRY VTT HOOKS ---
@@ -90,7 +91,7 @@ Hooks.on("rmuMRFResetAnchor", () => {
 
     if (!isValidActor(token)) return;
 
-    const newAnchor = { x: token.document.x, y: token.document.y };
+    const newAnchor = { x: token.document.x, y: token.document.y, elevation: token.document.elevation };
 
     // Synchronise both the persistent map and current session cache
     _anchorCache.set(token.id, newAnchor);
@@ -98,6 +99,9 @@ Hooks.on("rmuMRFResetAnchor", () => {
 
     // Invalidate the mathematical result cache to force new pathfinding from the new origin
     _cachedData.result = null;
+
+    // For players, we also need to update the tracked elevation of the anchor to prevent false cache hits if they change floors mid-turn
+    _cachedData.playerFloorZ = token.document.elevation;
 
     ui.notifications.info("RMU Movement: Anchor Reset");
     triggerUpdate(true);
@@ -147,10 +151,11 @@ Hooks.on("controlToken", (token, controlled) => {
     // --- Core Logic ---
     _cachedData.tokenId = token.id;
     _cachedData.result = null;
+    _cachedData.playerFloorZ = token.document.elevation;
 
     let savedAnchor = _anchorCache.get(token.id);
     if (!savedAnchor) {
-        savedAnchor = { x: token.document.x, y: token.document.y };
+        savedAnchor = { x: token.document.x, y: token.document.y, elevation: token.document.elevation };
         _anchorCache.set(token.id, savedAnchor);
     }
     _cachedData.anchor = savedAnchor;
@@ -161,12 +166,28 @@ Hooks.on("controlToken", (token, controlled) => {
 
 /**
  * Hooks into token data updates.
- * If the token's X/Y coordinates change, it means the token has successfully moved.
- * We keep the anchor (as it represents the start of the turn) and trigger a non-forced update to refresh visibility.
+ * If the token's spatial coordinates change, we intercept the update to see
+ * if they used a cross-floor portal or if they simply flew into the air.
  */
 Hooks.on("updateToken", (document, change, options, userId) => {
     if (!document.object?.controlled) return;
-    if (change.x || change.y) {
+
+    if (change.elevation !== undefined) {
+        // Did this elevation change happen because they walked into a portal?
+        const isInsidePortal = canvas.scene.regions.contents.some(
+            (region) => region.behaviors.some((b) => b.type === "changeLevel" && !b.disabled) && region.testPoint({ x: document.x, y: document.y, elevation: document.elevation }),
+        );
+
+        if (isInsidePortal) {
+            // Permanently update the player's active floor for this turn
+            _cachedData.playerFloorZ = document.elevation;
+            console.log("RMU MRF | Cross-floor portal transition detected. Switching to Phase 2.");
+        } else {
+            console.log("RMU MRF | Mid-air flight detected. Retaining native floor (Phase 1).");
+        }
+    }
+
+    if (change.x !== undefined || change.y !== undefined || change.elevation !== undefined) {
         triggerUpdate(false);
     }
 });
@@ -206,26 +227,22 @@ function triggerUpdate(forceRecalc) {
         // Fallback: Check persistent cache or set a new origin
         anchor = _anchorCache.get(token.id);
         if (!anchor) {
-            anchor = { x: token.document.x, y: token.document.y };
+            anchor = { x: token.document.x, y: token.document.y, elevation: token.document.elevation };
             _anchorCache.set(token.id, anchor);
         }
         _cachedData.anchor = anchor;
         _cachedData.tokenId = token.id;
     }
 
-    // Fast-path: If no recalculation is forced and we have a valid cache, send directly to the renderer
-    if (!forceRecalc && _cachedData.result) {
-        drawOverlay(token, _cachedData.result, "grid", anchor);
-        return;
-    }
-
     /**
      * DYNAMIC VIEW ELEVATION TRACKING
-     * Reads the active render slice elevation directly from the primary canvas group.
-     * This is critical for multi-level maps, allowing the module to pathfind across portals
-     * based on which floor the user is actively viewing.
+     * For GMs, we read the active render slice elevation directly from the primary canvas group,
+     * allowing them to manually scout different floors using the Scene Controls.
+     * For players, we rely on the tracked 'playerFloorZ' which intelligently updates
+     * ONLY when they use a valid cross-floor portal.
      */
-    const dynamicViewZ = canvas.primary?.background?.elevation ?? token.document?.elevation ?? 0;
+    const isGM = game.user.isGM;
+    const dynamicViewZ = isGM ? (canvas.primary?.background?.elevation ?? token.document?.elevation ?? 0) : (_cachedData.playerFloorZ ?? token.document?.elevation ?? 0);
 
     // Strict fast-path: Only use the visual cache if the force flag is false AND we are still looking at the exact same floor
     if (!forceRecalc && _cachedData.result && _cachedData.viewZ === dynamicViewZ) {
