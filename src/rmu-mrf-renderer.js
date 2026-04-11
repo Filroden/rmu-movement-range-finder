@@ -390,7 +390,7 @@ function _handleHoverEvent(event, container, squareMap, settings, isGridless, ho
     hoverPath.endFill();
 
     // 4. Update and position the large tooltip text
-    hoverText.text = `${Number.parseFloat(hoveredSquare.cost.toFixed(1))} ${gridUnit}`;
+    hoverText.text = `${hoveredSquare.paceName}: ${Number.parseFloat(hoveredSquare.cost.toFixed(1))} ${gridUnit}`;
     hoverText.position.set(hoveredSquare.centerX, hoveredSquare.centerY - 15);
     hoverText.visible = true;
 }
