@@ -44,22 +44,27 @@ export function drawOverlay(token, data, mode, anchor) {
 export function clearOverlay() {
     const container = canvas.interface.reverseMask || canvas.interface;
 
-    // 1. Clean up the interactive mouse listener
-    // Failing to detach this will cause exponential memory leaks as new listeners stack up
     if (container._rmuHoverListener) {
         canvas.stage.off("pointermove", container._rmuHoverListener);
         container._rmuHoverListener = null;
     }
 
-    // 2. Identify and purge our specific PIXI graphics layers
-    const toRemove = container.children.filter((c) => c.name === "rmuMovementGraphics" || c.name === "rmuMovementHoverLayer");
-
-    toRemove.forEach((c) => {
+    // 1. Purge interactive UI layers from the UI Glass
+    const uiToRemove = container.children.filter((c) => c.name === "rmuMovementHoverLayer");
+    uiToRemove.forEach((c) => {
         c.removeChildren();
-        c.destroy({ children: true }); // Ensure deep cleanup of WebGL textures
+        c.destroy({ children: true });
     });
 
-    // 3. Remove the HTML HUD
+    // 2. Purge 3D-aware base graphics from the Primary Canvas
+    // Safe null-chaining without an early return to ensure clearLegend() always runs
+    const primaryToRemove = canvas.primary?.children?.filter((child) => child.name === "rmuMovementGraphics") || [];
+    primaryToRemove.forEach((child) => {
+        child.removeChildren();
+        child.destroy({ children: true });
+    });
+
+    // Remove the HTML HUD
     clearLegend();
 }
 
@@ -68,25 +73,38 @@ export function clearOverlay() {
  */
 function _drawGridHighlight(token, squareMap, settings) {
     const container = canvas.interface.reverseMask || canvas.interface;
-    const graphics = new PIXI.Graphics();
-    graphics.name = "rmuMovementGraphics";
-
-    // Disable interaction on the base layer so it doesn't block token clicks
-    graphics.eventMode = "none";
-
     const isPlayerToken = token.document.hasPlayerOwner;
-
-    // GMs bypass Fog of War restrictions unless they are explicitly testing a player's token
     const shouldEnforceFog = !game.user.isGM || isPlayerToken;
     const anchorColorInt = Color.from(settings.colors.Anchor).valueOf();
     const isGridless = canvas.grid.type === CONST.GRID_TYPES.GRIDLESS;
 
-    // Execute Passes
-    _drawCellsPass(graphics, squareMap, token, settings, shouldEnforceFog, isGridless, anchorColorInt);
-    _drawBoundariesPass(graphics, squareMap, anchorColorInt);
+    // 1. Bucket the matrix by elevation.
+    const elevationGroups = new Map();
+    for (const [key, square] of squareMap.entries()) {
+        const z = square.elevation ?? 0;
+        if (!elevationGroups.has(z)) elevationGroups.set(z, new Map());
+        elevationGroups.get(z).set(key, square);
+    }
 
-    container.addChild(graphics);
+    // 2. Render 3D-aware elements to the Primary Canvas
+    for (const [z, groupMap] of elevationGroups) {
+        const graphics = new PIXI.Graphics();
+        graphics.name = "rmuMovementGraphics";
+        graphics.eventMode = "none";
 
+        // --- NATIVE 3D STACK PROPERTIES ---
+        graphics.elevation = z;
+        graphics.zIndex = z;
+        graphics.sortLayer = 350;
+
+        _drawCellsPass(graphics, groupMap, token, settings, shouldEnforceFog, isGridless, anchorColorInt);
+        _drawBoundariesPass(graphics, groupMap, anchorColorInt);
+
+        // Append strictly to the native 3D stack
+        canvas.primary.addChild(graphics);
+    }
+
+    // 3. Render purely 2D UI elements (tooltips) back to the Interface Canvas
     _setupHoverTooltip(container, squareMap, settings, isGridless);
 }
 

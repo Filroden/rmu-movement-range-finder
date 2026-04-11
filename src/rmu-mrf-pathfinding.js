@@ -394,7 +394,7 @@ function _calculateSquare({ token, scaledPaces, grid, centerPt, startX, startY, 
             }
         }
     }
-    return processResults(minCosts, safetyMap, scaledPaces, grid, costPerGridUnit, parents, seeds);
+    return processResults({ minCosts, safetyMap, scaledPaces, grid, costPerGridUnit, parents, seeds, targetZ });
 }
 
 // ----------------------------------------------------------------------
@@ -488,7 +488,7 @@ function _calculateHex({ token, scaledPaces, grid, centerPt, startX, startY, tw,
             }
         }
     }
-    return processResults(minCosts, safetyMap, scaledPaces, grid, costPerGridUnit, parents, seeds);
+    return processResults({ minCosts, safetyMap, scaledPaces, grid: grid, costPerGridUnit, parents, seeds, targetZ });
 }
 
 // ----------------------------------------------------------------------
@@ -592,7 +592,7 @@ function _calculateGridlessTheta({ token, scaledPaces, centerPt, startX, startY,
             }
         }
     }
-    return processResults(minCosts, safetyMap, scaledPaces, syntheticGrid, costPerGridUnit, parents, seeds);
+    return processResults({ minCosts, safetyMap, scaledPaces, grid: syntheticGrid, costPerGridUnit, parents, seeds, targetZ });
 }
 
 /**
@@ -654,7 +654,7 @@ function _determineBestPace(cost, sortedPaces, roundingRule, costPerGridUnit) {
  * Formats the raw mathematical output map into a structured payload for the Renderer.
  * Merges cost data, coordinate geometry, bounding colours, and portal history into single objects.
  */
-function processResults(minCosts, safetyMap, scaledPaces, grid, costPerGridUnit, parents, seeds = null) {
+function processResults({ minCosts, safetyMap, scaledPaces, grid, costPerGridUnit, parents, seeds = null, targetZ = 0 }) {
     const roundingRule = getRoundingMode();
     const resultSquares = new Map();
 
@@ -698,6 +698,7 @@ function processResults(minCosts, safetyMap, scaledPaces, grid, costPerGridUnit,
             pathToPortal: seedData ? seedData.pathToPortal : null,
             parentGridKey: parentKeyData,
             parentKey: _formatParentKey(parentKeyData, grid),
+            elevation: targetZ,
         });
     }
 
