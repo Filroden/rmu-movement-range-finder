@@ -24,10 +24,15 @@
     "RMU_MRF.paces.Sprint": "Esprintar",
     "RMU_MRF.paces.Dash": "Cargar",
     "RMU_MRF.paces.Anchor": "Ancla",
+    "RMU_MRF.paces.Portal": "Portal de Región de Escena",
     "RMU_MRF.settings.showHoverPath.name": "Habilitar trazador de ruta al pasar el cursor",
     "RMU_MRF.settings.showHoverPath.hint": "Dibuja una línea que muestra la ruta exacta tomada para alcanzar el área señalada. Se puede alternar mediante un atajo de teclado.",
     "RMU_MRF.keybindings.toggleHoverPath.name": "Alternar trazador de ruta al pasar el cursor",
     "RMU_MRF.keybindings.toggleHoverPath.hint": "Muestra u oculta la línea de trazado de ruta en la superposición de movimiento.",
     "RMU_MRF.notifications.hoverEnabled": "Ruta flotante RMU: Habilitada",
-    "RMU_MRF.notifications.hoverDisabled": "Ruta flotante RMU: Deshabilitada"
+    "RMU_MRF.notifications.hoverDisabled": "Ruta flotante RMU: Deshabilitada",
+    "RMU_MRF.legend.title": "Rango de Movimiento",
+    "RMU_MRF.legend.toggleLayer": "Alternar Superposición",
+    "RMU_MRF.legend.resetAnchor": "Restablecer Ancla",
+    "RMU_MRF.legend.togglePath": "Alternar Ruta al Pasar el Cursor"
 }

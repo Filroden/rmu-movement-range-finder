@@ -24,10 +24,15 @@
     "RMU_MRF.paces.Sprint": "Sprint",
     "RMU_MRF.paces.Dash": "Dash",
     "RMU_MRF.paces.Anchor": "Anchor",
+    "RMU_MRF.paces.Portal": "Scene Region Portal",
     "RMU_MRF.settings.showHoverPath.name": "Enable Hover Path Tracer",
     "RMU_MRF.settings.showHoverPath.hint": "Draws a line showing the exact route taken to reach the hovered area. Can be toggled via hotkey.",
     "RMU_MRF.keybindings.toggleHoverPath.name": "Toggle Hover Path Tracer",
     "RMU_MRF.keybindings.toggleHoverPath.hint": "Shows or hides the path trace line on the movement overlay.",
     "RMU_MRF.notifications.hoverEnabled": "RMU Hover Path: Enabled",
-    "RMU_MRF.notifications.hoverDisabled": "RMU Hover Path: Disabled"
+    "RMU_MRF.notifications.hoverDisabled": "RMU Hover Path: Disabled",
+    "RMU_MRF.legend.title": "Movement Range",
+    "RMU_MRF.legend.toggleLayer": "Toggle Overlay",
+    "RMU_MRF.legend.resetAnchor": "Reset Anchor",
+    "RMU_MRF.legend.togglePath": "Toggle Hover Path"
 }
