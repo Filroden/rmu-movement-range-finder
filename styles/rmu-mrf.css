@@ -61,6 +61,12 @@
     display: flex;
     flex-direction: column;
     gap: var(--filroden-space-s);
+    padding-bottom: var(--filroden-space-m);
+}
+
+.rmu-mrf-legend-paces.rmu-mrf-legend-section {
+    border-bottom: var(--filroden-border-main);
+    margin-bottom: var(--filroden-space-m);
 }
 
 .rmu-mrf-legend-row {

@@ -376,12 +376,12 @@ function _handleHoverEvent(event, container, squareMap, settings, isGridless, ho
     const hoveredSquare = squareMap.get(hoverKey);
     hoverPath.clear();
 
-    if (!hoveredSquare || hoveredSquare.isHiddenByFog) {
+    if (!hoveredSquare || hoveredSquare.isHiddenByFog || !settings.showHoverPath) {
         hoverText.visible = false;
         return;
     }
 
-    if (settings.showHoverPath) _drawHoverBreadcrumbs(hoveredSquare, squareMap, hoverPath);
+    _drawHoverBreadcrumbs(hoveredSquare, squareMap, hoverPath);
 
     // 3. Draw a crisp circle directly under the mouse
     hoverPath.beginFill(0xffffff, 0.9);
