@@ -48,7 +48,7 @@ const _anchorCache = new Map();
  * @type {object}
  */
 let _cachedData = {
-    tokenId: null,
+    cacheKey: null,
     anchor: null,
     result: null,
     viewZ: null, // Tracks the scene elevation level the user was looking at when the cache was built
@@ -92,9 +92,10 @@ Hooks.on("rmuMRFResetAnchor", () => {
     if (!isValidActor(token)) return;
 
     const newAnchor = { x: token.document.x, y: token.document.y, elevation: token.document.elevation };
+    const cacheKey = `${canvas.scene.id}-${token.id}`; // Composite key to uniquely identify the token within the scene
 
     // Synchronise both the persistent map and current session cache
-    _anchorCache.set(token.id, newAnchor);
+    _anchorCache.set(cacheKey, newAnchor);
     _cachedData.anchor = newAnchor;
 
     // Invalidate the mathematical result cache to force new pathfinding from the new origin
@@ -115,8 +116,9 @@ Hooks.on("deleteWall", () => triggerUpdate(true));
 
 // Clean up memory leaks when tokens are permanently removed from the scene
 Hooks.on("deleteToken", (document) => {
-    if (_anchorCache.has(document.id)) {
-        _anchorCache.delete(document.id);
+    const cacheKey = `${document.parent.id}-${document.id}`;
+    if (_anchorCache.has(cacheKey)) {
+        _anchorCache.delete(cacheKey);
     }
 });
 
@@ -149,14 +151,16 @@ Hooks.on("controlToken", (token, controlled) => {
     }
 
     // --- Core Logic ---
-    _cachedData.tokenId = token.id;
+    const cacheKey = `${canvas.scene.id}-${token.id}`; // Composite Key
+
+    _cachedData.cacheKey = cacheKey;
     _cachedData.result = null;
     _cachedData.playerFloorZ = token.document.elevation;
 
-    let savedAnchor = _anchorCache.get(token.id);
+    let savedAnchor = _anchorCache.get(cacheKey);
     if (!savedAnchor) {
         savedAnchor = { x: token.document.x, y: token.document.y, elevation: token.document.elevation };
-        _anchorCache.set(token.id, savedAnchor);
+        _anchorCache.set(cacheKey, savedAnchor);
     }
     _cachedData.anchor = savedAnchor;
 
@@ -221,17 +225,19 @@ function triggerUpdate(forceRecalc) {
     const paces = getMovementPaces(token);
     if (!paces || paces.length === 0) return;
 
+    const cacheKey = `${canvas.scene.id}-${token.id}`;
+
     // Double-check anchor integrity to prevent desyncs during rapid selection changes
     let anchor = _cachedData.anchor;
-    if (!anchor || _cachedData.tokenId !== token.id) {
+    if (!anchor || _cachedData.cacheKey !== cacheKey) {
         // Fallback: Check persistent cache or set a new origin
-        anchor = _anchorCache.get(token.id);
+        anchor = _anchorCache.get(cacheKey);
         if (!anchor) {
             anchor = { x: token.document.x, y: token.document.y, elevation: token.document.elevation };
-            _anchorCache.set(token.id, anchor);
+            _anchorCache.set(cacheKey, anchor);
         }
         _cachedData.anchor = anchor;
-        _cachedData.tokenId = token.id;
+        _cachedData.cacheKey = cacheKey;
     }
 
     /**

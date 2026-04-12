@@ -61,10 +61,13 @@ export function calculateReachableSquares(token, movementPaces, originOverride =
     // Shared cache for collision raycasts to drastically reduce CPU load within a single pass
     const wallCheckCache = new Map();
 
+    // Composite cache key to uniquely identify the token's position across scene and elevation changes
+    const cacheKey = `${canvas.scene.id}-${token.id}`;
+
     // ---------------------------------------------------------
     // PHASE 1: NATIVE FLOOR CACHING
     // ---------------------------------------------------------
-    let cacheData = globalPortalCache.get(token.id);
+    let cacheData = globalPortalCache.get(cacheKey);
 
     // Invalidate the cache if the token physically moves or changes elevation
     const anchorHasMoved = !cacheData || cacheData.nativeZ !== anchorZ || cacheData.x !== startX || cacheData.y !== startY;
@@ -78,7 +81,7 @@ export function calculateReachableSquares(token, movementPaces, originOverride =
         const nativeResults = _runAlgorithm({ grid, token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, targetZ: anchorZ, regionCache });
 
         // Scan the results for portals (stairs) and cache them as launchpads for upper floors
-        _cacheReachablePortals(token.id, startX, startY, nativeResults, regionCache, anchorZ);
+        _cacheReachablePortals(cacheKey, startX, startY, nativeResults, regionCache, anchorZ);
 
         if (viewZ === anchorZ) return nativeResults;
     }
@@ -91,7 +94,7 @@ export function calculateReachableSquares(token, movementPaces, originOverride =
         return _runAlgorithm({ grid, token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, targetZ: viewZ, regionCache });
     } else {
         // Multi-level view: Extract the cached portals and use them as new starting seeds
-        const seeds = _getSeedsForView(token.id, viewZ, scaledPaces);
+        const seeds = _getSeedsForView(cacheKey, viewZ, scaledPaces);
         if (!seeds || seeds.length === 0) return new Map();
 
         return _runAlgorithm({ grid, token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, targetZ: viewZ, regionCache, seeds });
@@ -230,7 +233,7 @@ function _buildPathToPortal(startSquare, resultMap) {
  * Scans the completed native floor matrix. Any reachable cell that collides
  * with a 'changeLevel' region is flagged and stored as a future starting point.
  */
-function _cacheReachablePortals(tokenId, startX, startY, resultMap, regionCache, currentZ) {
+function _cacheReachablePortals(cacheKey, startX, startY, resultMap, regionCache, currentZ) {
     const reachablePortals = [];
     const nativeLevelId = _getActiveLevelId(currentZ);
 
@@ -261,7 +264,7 @@ function _cacheReachablePortals(tokenId, startX, startY, resultMap, regionCache,
             }
         }
     }
-    globalPortalCache.set(tokenId, { nativeZ: currentZ, x: startX, y: startY, portals: reachablePortals });
+    globalPortalCache.set(cacheKey, { nativeZ: currentZ, x: startX, y: startY, portals: reachablePortals });
 }
 
 /**
@@ -269,8 +272,8 @@ function _cacheReachablePortals(tokenId, startX, startY, resultMap, regionCache,
  * It takes the cached portals, adds the vertical transition penalty to their cost,
  * and filters out any portals that cannot physically reach the target view elevation.
  */
-function _getSeedsForView(tokenId, viewZ, scaledPaces) {
-    const cacheData = globalPortalCache.get(tokenId);
+function _getSeedsForView(cacheKey, viewZ, scaledPaces) {
+    const cacheData = globalPortalCache.get(cacheKey);
     if (!cacheData) return null;
 
     const seeds = [];
