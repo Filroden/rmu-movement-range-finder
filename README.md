@@ -1,6 +1,6 @@
-# RMU Movement Range Finder
+# Movement Range Finder for RMU
 
-![Latest Version](https://img.shields.io/badge/Version-2.0.0-blue)
+![Latest Version](https://img.shields.io/badge/Version-2.1.0-blue)
 ![Foundry Version](https://img.shields.io/badge/Foundry_VTT-v13_%7C_v14-orange)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 ![System](https://img.shields.io/badge/System-RMU-blue)
@@ -9,7 +9,7 @@
 ![Last Commit](https://img.shields.io/github/last-commit/Filroden/rmu-movement-range-finder)
 ![Issues](https://img.shields.io/github/issues/Filroden/rmu-movement-range-finder)
 
-**RMU Movement Range Finder** is a tactical aid for the *Rolemaster Unified* (RMU) system that visualises movement for gridless, square, and hex maps. It calculates exactly how far a token can move based on their Base Movement Rate and the map's layout, routeing around walls and obstacles, and moving up and down levels within scenes that have regions defined with the `changeElevation` behaviour.
+**Movement Range Finder for RMU** is a tactical aid for the *Rolemaster Unified* (RMU) system that visualises movement for gridless, square, and hex maps. It calculates exactly how far a token can move based on their Base Movement Rate and the map's layout, routeing around walls and obstacles, and moving up and down levels within scenes that have regions defined with the `changeElevation` behaviour.
 
 It highlights the movement area using colour-graduated cells based on RMU's movement paces (`Walk`, `Run`, `Sprint`, etc.) to help determine pace penalties when moving while acting.
 
@@ -82,3 +82,11 @@ The module uses a range of methods to work out if a path is valid. It is importa
 ## License
 
 This module is licensed under the [MIT License](LICENSE).
+
+## Disclaimer and IP Notice
+
+The Movement Range Finder for RMU module is an unofficial, community-developed tool designed to enhance the Rolemaster Unified experience on Foundry Virtual Tabletop.
+
+This module is completely independent and is not affiliated with, endorsed, sponsored, or approved by Iron Crown Enterprises (ICE). "Rolemaster", "Rolemaster Unified", and the "RMU" acronym are trademarks of Iron Crown Enterprises.
+
+This project does not distribute any proprietary text, artwork, or core rulebook content belonging to ICE. It functions strictly as a mechanical, workflow, and user interface enhancement for the official RMU system on Foundry VTT. Any use of specific system terminology or mechanical values is for functional compatibility purposes only.
