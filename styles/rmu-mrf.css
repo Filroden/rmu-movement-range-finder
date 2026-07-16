@@ -3,82 +3,82 @@
     width: 16rem;
     top: 15px;
     margin-right: 15px;
-    background-color: var(--filroden-color-bg-darkest);
-    color: var(--filroden-color-text-main);
-    border: var(--filroden-border-main);
-    border-radius: var(--filroden-radius-medium);
-    padding: var(--filroden-space-m) var(--filroden-space-l);
-    box-shadow: var(--filroden-shadow-window);
+    background-color: var(--rmu-mrf-bg-base);
+    color: var(--rmu-mrf-text-primary);
+    border: 1px solid var(--rmu-mrf-border-main);
+    border-radius: var(--rmu-mrf-radius-medium);
+    padding: var(--rmu-mrf-space-m);
+    box-shadow: var(--rmu-mrf-shadow-window);
     z-index: 100;
-    font-family: var(--filroden-font-family);
+    font-family: var(--rmu-mrf-font-family);
     pointer-events: none;
     white-space: nowrap;
 }
 
 .rmu-mrf-legend-header {
-    margin: 0 0 var(--filroden-space-m) 0;
-    border-bottom: var(--filroden-border-main);
-    padding-bottom: var(--filroden-space-s);
-    font-size: var(--filroden-font-size-m);
-    color: var(--filroden-color-text-accent);
+    margin: 0 0 var(--rmu-mrf-space-m) 0;
+    border-bottom: 1px solid var(--rmu-mrf-border-main);
+    padding-bottom: var(--rmu-mrf-space-s);
+    font-size: var(--rmu-mrf-font-size-m);
+    color: var(--rmu-mrf-accent-main);
     text-align: center;
-    letter-spacing: var(--filroden-letter-spacing-wide);
+    letter-spacing: var(--rmu-mrf-letter-spacing-wide);
 }
 
 .rmu-mrf-legend-hints {
-    margin-bottom: var(--filroden-space-m);
-    font-size: var(--filroden-font-size-s);
-    color: var(--filroden-color-text-muted);
-    border-bottom: var(--filroden-border-main);
-    padding-bottom: var(--filroden-space-m);
+    margin-bottom: var(--rmu-mrf-space-m);
+    font-size: var(--rmu-mrf-font-size-s);
+    color: var(--rmu-mrf-text-secondary);
+    border-bottom: 1px solid var(--rmu-mrf-border-main);
+    padding-bottom: var(--rmu-mrf-space-m);
 }
 
 .rmu-mrf-hint-group {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: var(--filroden-space-m);
-    margin: var(--filroden-space-m) 0;
+    gap: var(--rmu-mrf-space-m);
+    margin: var(--rmu-mrf-space-m) 0;
 }
 
 .rmu-mrf-hint-keys {
     flex: 0 0 auto;
     text-align: right;
-    color: var(--filroden-color-text-muted); /* Blends the '+' symbol slightly */
+    color: var(--rmu-mrf-text-secondary);
 }
 
 .rmu-mrf-legend-hints kbd {
-    background-color: var(--filroden-color-bg-medium-solid);
-    border: var(--filroden-border-main);
-    border-radius: var(--filroden-radius-small);
-    padding: var(--filroden-space-xxs) var(--filroden-space-xs);
+    background-color: var(--rmu-mrf-bg-panel);
+    border: 1px solid var(--rmu-mrf-border-main);
+    border-radius: var(--rmu-mrf-radius-small);
+    padding: var(--rmu-mrf-space-xxs) var(--rmu-mrf-space-s);
     font-family: monospace;
-    font-size: var(--filroden-font-size-xs);
-    color: var(--filroden-color-text-main-solid);
+    font-size: var(--rmu-mrf-font-size-xs);
+    color: var(--rmu-mrf-text-primary);
 }
 
 .rmu-mrf-legend-paces {
     display: flex;
     flex-direction: column;
-    gap: var(--filroden-space-s);
-    padding-bottom: var(--filroden-space-m);
+    gap: var(--rmu-mrf-space-s);
+    padding-bottom: var(--rmu-mrf-space-m);
 }
 
 .rmu-mrf-legend-paces.rmu-mrf-legend-section {
-    border-bottom: var(--filroden-border-main);
-    margin-bottom: var(--filroden-space-m);
+    border-bottom: 1px solid var(--rmu-mrf-border-main);
+    margin-bottom: var(--rmu-mrf-space-m);
 }
 
 .rmu-mrf-legend-row {
     display: flex;
     align-items: center;
-    gap: var(--filroden-space-m);
-    font-size: var(--filroden-font-size-s);
+    gap: var(--rmu-mrf-space-m);
+    font-size: var(--rmu-mrf-font-size-s);
 }
 
 .rmu-mrf-legend-swatch {
-    width: var(--filroden-space-l); 
-    height: var(--filroden-space-l);
-    border: var(--filroden-border-dark);
-    border-radius: var(--filroden-radius-small);
+    width: var(--rmu-mrf-space-l); 
+    height: var(--rmu-mrf-space-l);
+    border: 1px solid var(--rmu-mrf-border-main);
+    border-radius: var(--rmu-mrf-radius-small);
 }
