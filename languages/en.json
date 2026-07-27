@@ -34,5 +34,10 @@
     "RMU_MRF.legend.title": "Movement Range",
     "RMU_MRF.legend.toggleLayer": "Toggle Overlay",
     "RMU_MRF.legend.resetAnchor": "Reset Anchor",
-    "RMU_MRF.legend.togglePath": "Toggle Hover Path"
+    "RMU_MRF.legend.togglePath": "Toggle Hover Path",
+
+    "RMU_MRF.settings.themeHue.name": "Color Theme",
+    "RMU_MRF.settings.themeHue.hint": "Select the primary hue for the interface.",
+    "RMU_MRF.settings.themeHue.choices.gold": "Gold",
+    "RMU_MRF.settings.themeHue.choices.teal": "Teal"
 }

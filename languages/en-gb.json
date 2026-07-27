@@ -1,3 +1,4 @@
 {
-  "RMU_MRF.settings.colorPace": "Colour: {pace}"
+    "RMU_MRF.settings.colorPace": "Colour: {pace}",
+    "RMU_MRF.settings.themeHue.name": "Colour Theme"
 }

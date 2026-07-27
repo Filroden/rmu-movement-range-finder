@@ -14,7 +14,7 @@
 
 import { calculateReachableSquares } from "./src/rmu-mrf-pathfinding.js";
 import { drawOverlay, clearOverlay } from "./src/rmu-mrf-renderer.js";
-import { registerSettings, getVisualSettings, MODULE_ID } from "./src/rmu-mrf-settings.js";
+import { registerSettings, getVisualSettings, MODULE_ID, applyThemeHue } from "./src/rmu-mrf-settings.js";
 import { getMovementPaces } from "./src/rmu-mrf-calculator.js";
 
 // Limit processing exclusively to actors that can physically move.
@@ -60,6 +60,10 @@ let _cachedData = {
 Hooks.once("init", () => {
     console.log(`${MODULE_ID} | Initialising RMU Movement Range Finder`);
     registerSettings();
+
+    // Apply saved theme hue to the document body immediately on load
+    const savedHue = game.settings.get(MODULE_ID, "themeHue");
+    applyThemeHue(savedHue);
 });
 
 Hooks.once("ready", () => {
