@@ -1,6 +1,6 @@
 # Movement Range Finder for RMU
 
-![Latest Version](https://img.shields.io/badge/Version-2.1.0-blue)
+![Latest Version](https://img.shields.io/badge/Version-2.1.1-blue)
 ![Foundry Version](https://img.shields.io/badge/Foundry_VTT-v13_%7C_v14-orange)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 ![System](https://img.shields.io/badge/System-RMU-blue)

@@ -45,12 +45,7 @@ export function calculateReachableSquares(token, movementPaces, originOverride =
     const units = canvas.scene.grid.units?.toLowerCase();
     const distanceScale = units && METRIC_UNITS.has(units) ? 1 / FT_PER_METER : 1;
     const scaledPaces = movementPaces.map((p) => ({ ...p, distance: p.distance * distanceScale }));
-
-    const startX = originOverride ? originOverride.x : token.document.x;
-    const startY = originOverride ? originOverride.y : token.document.y;
-    const tw = token.w;
-    const th = token.h;
-    const centerPt = originOverride ? { x: startX + tw / 2, y: startY + th / 2 } : token.center;
+    const centerPt = originOverride ? { x: originOverride.x + token.w / 2, y: originOverride.y + token.h / 2 } : token.center;
 
     // TRUE ABSOLUTE ELEVATION
     const viewZ = trackedViewZ;
@@ -70,7 +65,7 @@ export function calculateReachableSquares(token, movementPaces, originOverride =
     let cacheData = globalPortalCache.get(cacheKey);
 
     // Invalidate the cache if the token physically moves or changes elevation
-    const anchorHasMoved = !cacheData || cacheData.nativeZ !== anchorZ || cacheData.x !== startX || cacheData.y !== startY;
+    const anchorHasMoved = !cacheData || cacheData.nativeZ !== anchorZ || cacheData.x !== centerPt.x || cacheData.y !== centerPt.y;
 
     // Architectural Guard: Only allow wall-updates (forceRecalc) to wipe the native cache
     // IF we are actively viewing the native floor. If we recalculate the native floor
@@ -78,10 +73,10 @@ export function calculateReachableSquares(token, movementPaces, originOverride =
     const shouldRecalcNative = anchorHasMoved || (forceRecalc && viewZ === anchorZ);
 
     if (shouldRecalcNative) {
-        const nativeResults = _runAlgorithm({ grid, token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, targetZ: anchorZ, regionCache });
+        const nativeResults = _runAlgorithm({ grid, token, scaledPaces, centerPt, wallCheckCache, targetZ: anchorZ, regionCache });
 
         // Scan the results for portals (stairs) and cache them as launchpads for upper floors
-        _cacheReachablePortals(cacheKey, startX, startY, nativeResults, regionCache, anchorZ);
+        _cacheReachablePortals(cacheKey, centerPt.x, centerPt.y, nativeResults, regionCache, anchorZ);
 
         if (viewZ === anchorZ) return nativeResults;
     }
@@ -91,13 +86,13 @@ export function calculateReachableSquares(token, movementPaces, originOverride =
     // ---------------------------------------------------------
     if (viewZ === anchorZ) {
         // If we are on the native floor but didn't trigger a native cache rebuild (e.g. standard hover refresh)
-        return _runAlgorithm({ grid, token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, targetZ: viewZ, regionCache });
+        return _runAlgorithm({ grid, token, scaledPaces, centerPt, wallCheckCache, targetZ: viewZ, regionCache });
     } else {
         // Multi-level view: Extract the cached portals and use them as new starting seeds
         const seeds = _getSeedsForView(cacheKey, viewZ, scaledPaces);
         if (!seeds || seeds.length === 0) return new Map();
 
-        return _runAlgorithm({ grid, token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, targetZ: viewZ, regionCache, seeds });
+        return _runAlgorithm({ grid, token, scaledPaces, centerPt, wallCheckCache, targetZ: viewZ, regionCache, seeds });
     }
 }
 
@@ -109,15 +104,15 @@ export function calculateReachableSquares(token, movementPaces, originOverride =
  * Evaluates the current scene's grid architecture and routes the parameters
  * to the mathematically appropriate pathfinding algorithm.
  */
-function _runAlgorithm({ grid, token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, targetZ, regionCache, seeds = null }) {
+function _runAlgorithm({ grid, token, scaledPaces, centerPt, wallCheckCache, targetZ, regionCache, seeds = null }) {
     const isHex = grid.type !== CONST.GRID_TYPES.SQUARE && grid.type !== CONST.GRID_TYPES.GRIDLESS;
 
     if (grid.type === CONST.GRID_TYPES.GRIDLESS) {
-        return _calculateGridlessTheta({ token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, targetZ, regionCache, seeds });
+        return _calculateGridlessTheta({ token, scaledPaces, centerPt, wallCheckCache, targetZ, regionCache, seeds });
     } else if (isHex) {
-        return _calculateHex({ token, scaledPaces, grid, centerPt, startX, startY, tw, th, wallCheckCache, targetZ, regionCache, seeds });
+        return _calculateHex({ token, scaledPaces, grid, centerPt, wallCheckCache, targetZ, regionCache, seeds });
     } else {
-        return _calculateSquare({ token, scaledPaces, grid, centerPt, startX, startY, tw, th, wallCheckCache, targetZ, regionCache, seeds });
+        return _calculateSquare({ token, scaledPaces, grid, centerPt, wallCheckCache, targetZ, regionCache, seeds });
     }
 }
 
@@ -329,14 +324,14 @@ function _getSeedsForView(cacheKey, viewZ, scaledPaces) {
  * Dijkstra variant for orthogonal grids.
  * Expands outward cell-by-cell, multiplying diagonal moves by 1.414 (√2) for accurate distances.
  */
-function _calculateSquare({ token, scaledPaces, grid, centerPt, startX, startY, tw, th, wallCheckCache, targetZ, regionCache, seeds = null }) {
+function _calculateSquare({ token, scaledPaces, grid, centerPt, wallCheckCache, targetZ, regionCache, seeds = null }) {
     const parents = new Map();
     const minCosts = new Map();
     const queue = new MinHeap();
     const safetyMap = new Map();
 
     // Populate the priority queue with either the token's footprint or the provided portals
-    _initializeQueue({ parents, queue, minCosts, safetyMap, grid, centerPt, startX, startY, tw, th, isTheta: false, wallCheckCache, targetZ, seeds });
+    _initializeQueue({ parents, queue, minCosts, safetyMap, grid, centerPt, isTheta: false, targetZ, seeds });
 
     const costPerGridUnit = Number(grid.distance);
     const searchLimit = Math.max(...scaledPaces.map((p) => p.distance)) + costPerGridUnit;
@@ -409,13 +404,13 @@ function _calculateSquare({ token, scaledPaces, grid, centerPt, startX, startY, 
  * Addresses Hex-specific geometry, including alternating row offsets and handling
  * "jumps" across blocked nodes to simulate realistic hex traversal.
  */
-function _calculateHex({ token, scaledPaces, grid, centerPt, startX, startY, tw, th, wallCheckCache, targetZ, regionCache, seeds = null }) {
+function _calculateHex({ token, scaledPaces, grid, centerPt, wallCheckCache, targetZ, regionCache, seeds = null }) {
     const parents = new Map();
     const minCosts = new Map();
     const safetyMap = new Map();
     const queue = new MinHeap();
 
-    _initializeQueue({ parents, queue, minCosts, safetyMap, grid, centerPt, startX, startY, tw, th, isTheta: false, wallCheckCache, targetZ, seeds });
+    _initializeQueue({ parents, queue, minCosts, safetyMap, grid, centerPt, isTheta: false, targetZ, seeds });
 
     const costPerGridUnit = Number(grid.distance);
     const searchLimit = Math.max(...scaledPaces.map((p) => p.distance)) + costPerGridUnit;
@@ -506,7 +501,7 @@ function _calculateHex({ token, scaledPaces, grid, centerPt, startX, startY, tw,
  * * To process this mathematically without a physical grid, we overlay a "Synthetic
  * Micro-Grid" based on user settings to define discrete validation points.
  */
-function _calculateGridlessTheta({ token, scaledPaces, centerPt, startX, startY, tw, th, wallCheckCache, targetZ, regionCache, seeds = null }) {
+function _calculateGridlessTheta({ token, scaledPaces, centerPt, wallCheckCache, targetZ, regionCache, seeds = null }) {
     const parents = new Map();
     const resolutionPx = getGridlessResolution();
     const costPerGridUnit = canvas.scene.grid.distance;
@@ -520,7 +515,7 @@ function _calculateGridlessTheta({ token, scaledPaces, centerPt, startX, startY,
     const queue = new MinHeap();
     const safetyMap = new Map();
 
-    _initializeQueue({ parents, queue, minCosts, safetyMap, grid: syntheticGrid, centerPt, startX, startY, tw, th, isTheta: true, wallCheckCache, targetZ, seeds });
+    _initializeQueue({ parents, queue, minCosts, safetyMap, grid: syntheticGrid, centerPt, isTheta: true, targetZ, seeds });
 
     const searchLimit = Math.max(...scaledPaces.map((p) => p.distance)) + costPerGridUnit * 2;
     const neighborsOffsets = [
@@ -565,11 +560,6 @@ function _calculateGridlessTheta({ token, scaledPaces, centerPt, startX, startY,
                 const distPx = Math.hypot(neighborCenter.x - current.losOrigin.x, neighborCenter.y - current.losOrigin.y);
                 let distUnits = (distPx / sizePerGridUnit) * costPerGridUnit;
 
-                // Adjust cost if this ray originates from the token's physical center
-                if (current.losOrigin.isInitial) {
-                    const tokenRadiusPx = Math.min(tw, th) / 2;
-                    distUnits = Math.max(0, distUnits - (tokenRadiusPx / sizePerGridUnit) * costPerGridUnit);
-                }
                 newCost = current.losOrigin.cost + distUnits;
                 nextLosOrigin = current.losOrigin;
             } else {
@@ -811,45 +801,26 @@ function _seedQueueFromPortals({ parents, queue, minCosts, safetyMap, grid, isTh
 }
 
 /**
- * Populates the pathfinding queue by scanning the token's physical native footprint.
- * Ensures that all cells the token currently occupies are treated as valid starting points.
+ * Populates the pathfinding queue strictly from the token's mathematical centre point.
+ * Aligns the module with the core RMU system's centre-to-centre distance tracking.
  */
-function _seedQueueFromTokenFootprint({ queue, minCosts, safetyMap, grid, centerPt, startX, startY, tw, th, isTheta, wallCheckCache, targetZ }) {
-    const margin = grid.size * 0.02; // Small tolerance to prevent precision errors on bounding boxes
-    const safeLeft = startX + margin;
-    const safeRight = startX + tw - margin;
-    const safeTop = startY + margin;
-    const safeBottom = startY + th - margin;
+function _seedQueueFromTokenFootprint({ queue, minCosts, safetyMap, grid, centerPt, isTheta }) {
+    // 1. Identify the single grid cell that contains the token's absolute centre
+    const centerOffset = grid.getOffset(centerPt);
+    const key = `${centerOffset.i}.${centerOffset.j}`;
 
-    const c1 = grid.getOffset({ x: startX, y: startY });
-    const c2 = grid.getOffset({ x: startX + tw, y: startY + th });
-    const padding = 1;
-    const minI = Math.min(c1.i, c2.i) - padding;
-    const maxI = Math.max(c1.i, c2.i) + padding;
-    const minJ = Math.min(c1.j, c2.j) - padding;
-    const maxJ = Math.max(c1.j, c2.j) + padding;
+    // 2. Establish this cell as the zero-cost anchor point
+    minCosts.set(key, 0);
+    safetyMap.set(key, true);
 
-    const startOrigin = { x: centerPt.x, y: centerPt.y, cost: 0, isInitial: true };
-    const origin3D = { x: centerPt.x, y: centerPt.y, elevation: targetZ + 0.1 };
+    const payload = { i: centerOffset.i, j: centerOffset.j, cost: 0 };
 
-    for (let i = minI; i <= maxI; i++) {
-        for (let j = minJ; j <= maxJ; j++) {
-            const center = grid.getCenterPoint({ i, j });
-            if (center.x >= safeLeft && center.x <= safeRight && center.y >= safeTop && center.y <= safeBottom) {
-                const dest3D = { x: center.x, y: center.y, elevation: targetZ + 0.1 };
-
-                // Only add footprint cells if they don't cross a wall (e.g. token placed halfway through a door)
-                if (checkCellStrict(origin3D, dest3D, wallCheckCache)) {
-                    const key = `${i}.${j}`;
-                    if (!minCosts.has(key)) {
-                        minCosts.set(key, 0);
-                        safetyMap.set(key, true);
-                        queue.push(isTheta ? { i, j, cost: 0, losOrigin: startOrigin } : { i, j, cost: 0 });
-                    }
-                }
-            }
-        }
+    // 3. For Gridless Theta*, set the precise pixel coordinates as the raycast origin
+    if (isTheta) {
+        payload.losOrigin = { x: centerPt.x, y: centerPt.y, cost: 0, isInitial: true };
     }
+
+    queue.push(payload);
 }
 
 /**
@@ -863,20 +834,6 @@ function _initializeQueue(params) {
     }
 
     _seedQueueFromTokenFootprint(params);
-
-    // Failsafe: If the token is entirely blocked/isolated, force its immediate centre as a valid origin
-    if (params.queue.length === 0) {
-        const centerOffset = params.grid.getOffset(params.centerPt);
-        const key = `${centerOffset.i}.${centerOffset.j}`;
-        params.minCosts.set(key, 0);
-        params.safetyMap.set(key, true);
-
-        const payload = { i: centerOffset.i, j: centerOffset.j, cost: 0 };
-        if (params.isTheta) {
-            payload.losOrigin = { x: params.centerPt.x, y: params.centerPt.y, cost: 0, isInitial: true };
-        }
-        params.queue.push(payload);
-    }
 }
 
 /**
