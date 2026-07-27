@@ -34,5 +34,10 @@
     "RMU_MRF.legend.title": "Portée de Déplacement",
     "RMU_MRF.legend.toggleLayer": "Basculer la Superposition",
     "RMU_MRF.legend.resetAnchor": "Réinitialiser l'Ancre",
-    "RMU_MRF.legend.togglePath": "Basculer le Chemin au Survol"
+    "RMU_MRF.legend.togglePath": "Basculer le Chemin au Survol",
+
+    "RMU_MRF.settings.themeHue.name": "Thème de couleur",
+    "RMU_MRF.settings.themeHue.hint": "Sélectionnez la teinte principale de l'interface.",
+    "RMU_MRF.settings.themeHue.choices.gold": "Or",
+    "RMU_MRF.settings.themeHue.choices.teal": "Sarcelle"
 }

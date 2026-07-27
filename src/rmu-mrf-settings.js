@@ -31,6 +31,15 @@ const SETTING_COLOR_ANCHOR = "colorAnchor";
 const SETTING_COLOR_PORTAL = "colorPortal";
 
 /**
+ * Applies the selected hue class to the Foundry document body.
+ * @param {string} hue - The hue string ('gold' or 'teal').
+ */
+export function applyThemeHue(hue) {
+    document.body.classList.remove("rmu-mrf-hue-gold", "rmu-mrf-hue-teal");
+    document.body.classList.add(`rmu-mrf-hue-${hue}`);
+}
+
+/**
  * Registers all module settings and keybindings with Foundry's core API.
  * Called exactly once during the Foundry 'init' hook.
  */
@@ -179,6 +188,21 @@ export function registerSettings() {
             onChange: refreshOverlay,
         });
     }
+
+    // 5. UI Theme Hue Setting
+    game.settings.register(MODULE_ID, "themeHue", {
+        name: game.i18n.localize("RMU_MRF.settings.themeHue.name"),
+        hint: game.i18n.localize("RMU_MRF.settings.themeHue.hint"),
+        scope: "client",
+        config: true,
+        type: String,
+        choices: {
+            gold: game.i18n.localize("RMU_MRF.settings.themeHue.choices.gold"),
+            teal: game.i18n.localize("RMU_MRF.settings.themeHue.choices.teal"),
+        },
+        default: "gold",
+        onChange: (value) => applyThemeHue(value),
+    });
 }
 
 /**
